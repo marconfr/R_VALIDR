@@ -1,0 +1,355 @@
+{
+    "sources": [
+        {
+            "URL": "https://www.R-project.org/",
+            "author": [
+                {
+                    "literal": "R Core Team"
+                }
+            ],
+            "id": "R-base",
+            "issued": {
+                "date-parts": [
+                    [
+                        2022
+                    ]
+                ]
+            },
+            "publisher": "R Foundation for Statistical Computing",
+            "publisher-place": "Vienna, Austria",
+            "title": "R: A language and environment for statistical computing",
+            "title-short": "R",
+            "type": "book"
+        },
+        {
+            "URL": "https://CRAN.R-project.org/package=data.table",
+            "author": [
+                {
+                    "family": "Dowle",
+                    "given": "Matt"
+                },
+                {
+                    "family": "Srinivasan",
+                    "given": "Arun"
+                }
+            ],
+            "id": "R-data.table",
+            "issued": {
+                "date-parts": [
+                    [
+                        2022
+                    ]
+                ]
+            },
+            "note": "R package version 1.14.6",
+            "title": "Data.table: Extension of ‘data.frame‘",
+            "title-short": "Data.table",
+            "type": "book"
+        },
+        {
+            "URL": "https://CRAN.R-project.org/package=dplyr",
+            "author": [
+                {
+                    "family": "Wickham",
+                    "given": "Hadley"
+                },
+                {
+                    "family": "François",
+                    "given": "Romain"
+                },
+                {
+                    "family": "Henry",
+                    "given": "Lionel"
+                },
+                {
+                    "family": "Müller",
+                    "given": "Kirill"
+                }
+            ],
+            "id": "R-dplyr",
+            "issued": {
+                "date-parts": [
+                    [
+                        2022
+                    ]
+                ]
+            },
+            "note": "R package version 1.0.10",
+            "title": "Dplyr: A grammar of data manipulation",
+            "title-short": "Dplyr",
+            "type": "book"
+        },
+        {
+            "URL": "https://CRAN.R-project.org/package=ggplot2",
+            "author": [
+                {
+                    "family": "Wickham",
+                    "given": "Hadley"
+                },
+                {
+                    "family": "Chang",
+                    "given": "Winston"
+                },
+                {
+                    "family": "Henry",
+                    "given": "Lionel"
+                },
+                {
+                    "family": "Pedersen",
+                    "given": "Thomas Lin"
+                },
+                {
+                    "family": "Takahashi",
+                    "given": "Kohske"
+                },
+                {
+                    "family": "Wilke",
+                    "given": "Claus"
+                },
+                {
+                    "family": "Woo",
+                    "given": "Kara"
+                },
+                {
+                    "family": "Yutani",
+                    "given": "Hiroaki"
+                },
+                {
+                    "family": "Dunnington",
+                    "given": "Dewey"
+                }
+            ],
+            "id": "R-ggplot2",
+            "issued": {
+                "date-parts": [
+                    [
+                        2022
+                    ]
+                ]
+            },
+            "note": "R package version 3.4.0",
+            "title": "ggplot2: Create elegant data visualisations using the grammar of graphics",
+            "title-short": "ggplot2",
+            "type": "book"
+        },
+        {
+            "URL": "https://CRAN.R-project.org/package=ggpmisc",
+            "author": [
+                {
+                    "family": "Aphalo",
+                    "given": "Pedro J."
+                }
+            ],
+            "id": "R-ggpmisc",
+            "issued": {
+                "date-parts": [
+                    [
+                        2022
+                    ]
+                ]
+            },
+            "note": "R package version 0.5.1",
+            "title": "Ggpmisc: Miscellaneous extensions to ggplot2",
+            "title-short": "Ggpmisc",
+            "type": "book"
+        },
+        {
+            "URL": "https://CRAN.R-project.org/package=ggpp",
+            "author": [
+                {
+                    "family": "Aphalo",
+                    "given": "Pedro J."
+                }
+            ],
+            "id": "R-ggpp",
+            "issued": {
+                "date-parts": [
+                    [
+                        2022
+                    ]
+                ]
+            },
+            "note": "R package version 0.5.0",
+            "title": "Ggpp: Grammar extensions to ggplot2",
+            "title-short": "Ggpp",
+            "type": "book"
+        },
+        {
+            "URL": "https://CRAN.R-project.org/package=kableExtra",
+            "author": [
+                {
+                    "family": "Zhu",
+                    "given": "Hao"
+                }
+            ],
+            "id": "R-kableExtra",
+            "issued": {
+                "date-parts": [
+                    [
+                        2021
+                    ]
+                ]
+            },
+            "note": "R package version 1.3.4",
+            "title": "kableExtra: Construct complex table with kable and pipe syntax",
+            "title-short": "kableExtra",
+            "type": "book"
+        },
+        {
+            "URL": "https://CRAN.R-project.org/package=plotly",
+            "author": [
+                {
+                    "family": "Sievert",
+                    "given": "Carson"
+                },
+                {
+                    "family": "Parmer",
+                    "given": "Chris"
+                },
+                {
+                    "family": "Hocking",
+                    "given": "Toby"
+                },
+                {
+                    "family": "Chamberlain",
+                    "given": "Scott"
+                },
+                {
+                    "family": "Ram",
+                    "given": "Karthik"
+                },
+                {
+                    "family": "Corvellec",
+                    "given": "Marianne"
+                },
+                {
+                    "family": "Despouy",
+                    "given": "Pedro"
+                }
+            ],
+            "id": "R-plotly",
+            "issued": {
+                "date-parts": [
+                    [
+                        2022
+                    ]
+                ]
+            },
+            "note": "R package version 4.10.1",
+            "title": "Plotly: Create interactive web graphics via plotly.js",
+            "title-short": "Plotly",
+            "type": "book"
+        },
+        {
+            "URL": "https://CRAN.R-project.org/package=readxl",
+            "author": [
+                {
+                    "family": "Wickham",
+                    "given": "Hadley"
+                },
+                {
+                    "family": "Bryan",
+                    "given": "Jennifer"
+                }
+            ],
+            "id": "R-readxl",
+            "issued": {
+                "date-parts": [
+                    [
+                        2022
+                    ]
+                ]
+            },
+            "note": "R package version 1.4.1",
+            "title": "Readxl: Read excel files",
+            "title-short": "Readxl",
+            "type": "book"
+        },
+        {
+            "URL": "https://CRAN.R-project.org/package=viridis",
+            "author": [
+                {
+                    "family": "Garnier",
+                    "given": "Simon"
+                }
+            ],
+            "id": "R-viridis",
+            "issued": {
+                "date-parts": [
+                    [
+                        2021
+                    ]
+                ]
+            },
+            "note": "R package version 0.6.2",
+            "title": "Viridis: Colorblind-friendly color maps for r",
+            "title-short": "Viridis",
+            "type": "book"
+        },
+        {
+            "URL": "https://CRAN.R-project.org/package=viridisLite",
+            "author": [
+                {
+                    "family": "Garnier",
+                    "given": "Simon"
+                }
+            ],
+            "id": "R-viridisLite",
+            "issued": {
+                "date-parts": [
+                    [
+                        2022
+                    ]
+                ]
+            },
+            "note": "R package version 0.4.1",
+            "title": "viridisLite: Colorblind-friendly color maps (lite version)",
+            "title-short": "viridisLite",
+            "type": "book"
+        },
+        {
+            "ISBN": "978-3-319-24277-4",
+            "URL": "https://ggplot2.tidyverse.org",
+            "author": [
+                {
+                    "family": "Wickham",
+                    "given": "Hadley"
+                }
+            ],
+            "id": "ggplot22016",
+            "issued": {
+                "date-parts": [
+                    [
+                        2016
+                    ]
+                ]
+            },
+            "publisher": "Springer-Verlag New York",
+            "title": "ggplot2: Elegant graphics for data analysis",
+            "title-short": "ggplot2",
+            "type": "book"
+        },
+        {
+            "ISBN": "9781138331457",
+            "URL": "https://plotly-r.com",
+            "author": [
+                {
+                    "family": "Sievert",
+                    "given": "Carson"
+                }
+            ],
+            "id": "plotly2020",
+            "issued": {
+                "date-parts": [
+                    [
+                        2020
+                    ]
+                ]
+            },
+            "publisher": "Chapman; Hall/CRC",
+            "title": "Interactive web-based data visualization with r, plotly, and shiny",
+            "type": "book"
+        }
+    ],
+    "project_biblios": []
+}

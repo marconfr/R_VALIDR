@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<style>body{background-color:white;}</style>
+<script src="lib/jquery-3.6.0/jquery-3.6.0.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="lib/bootstrap-3.3.5/css/cosmo.min.css" rel="stylesheet" />
+<script src="lib/bootstrap-3.3.5/js/bootstrap.min.js"></script>
+<script src="lib/bootstrap-3.3.5/shim/html5shiv.min.js"></script>
+<script src="lib/bootstrap-3.3.5/shim/respond.min.js"></script>
+<style>h1 {font-size: 34px;}
+       h1.title {font-size: 38px;}
+       h2 {font-size: 30px;}
+       h3 {font-size: 24px;}
+       h4 {font-size: 18px;}
+       h5 {font-size: 16px;}
+       h6 {font-size: 12px;}
+       code {color: inherit; background-color: rgba(0, 0, 0, 0.04);}
+       pre:not([class]) { background-color: white }</style>
+<script src="lib/kePrint-0.0.1/kePrint.js"></script>
+<link href="lib/lightable-0.0.1/lightable.css" rel="stylesheet" />
+
+</head>
+<body>
+<table class="table" style="width: auto !important; ">
+<caption>Results of the linear regression.</caption>
+ <thead>
+  <tr>
+   <th style="text-align:left;">   </th>
+   <th style="text-align:right;"> Estimate </th>
+   <th style="text-align:right;"> CI (lower) </th>
+   <th style="text-align:right;"> CI (upper) </th>
+   <th style="text-align:right;"> Std. Error </th>
+   <th style="text-align:right;"> t value </th>
+   <th style="text-align:left;"> Pr(&gt;|t|) </th>
+  </tr>
+ </thead>
+<tbody>
+  <tr>
+   <td style="text-align:left;"> (Intercept) </td>
+   <td style="text-align:right;"> -6.4425545 </td>
+   <td style="text-align:right;"> -20.9764312 </td>
+   <td style="text-align:right;"> 8.0913223 </td>
+   <td style="text-align:right;"> 6.9674647 </td>
+   <td style="text-align:right;"> -0.9246627 </td>
+   <td style="text-align:left;"> 0.366 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> CONC_LEVEL </td>
+   <td style="text-align:right;"> 1.1718309 </td>
+   <td style="text-align:right;"> 1.0283921 </td>
+   <td style="text-align:right;"> 1.3152697 </td>
+   <td style="text-align:right;"> 0.0687638 </td>
+   <td style="text-align:right;"> 17.0413856 </td>
+   <td style="text-align:left;"> &lt;0.001 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> DUMMY </td>
+   <td style="text-align:right;"> 8.2896517 </td>
+   <td style="text-align:right;"> -12.2643540 </td>
+   <td style="text-align:right;"> 28.8436573 </td>
+   <td style="text-align:right;"> 9.8534831 </td>
+   <td style="text-align:right;"> 0.8412915 </td>
+   <td style="text-align:left;"> 0.41 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> CONC_LEVEL:DUMMY </td>
+   <td style="text-align:right;"> -0.1470538 </td>
+   <td style="text-align:right;"> -0.3499069 </td>
+   <td style="text-align:right;"> 0.0557994 </td>
+   <td style="text-align:right;"> 0.0972467 </td>
+   <td style="text-align:right;"> -1.5121720 </td>
+   <td style="text-align:left;"> 0.146 </td>
+  </tr>
+</tbody>
+<tfoot>
+<tr>
+<td style = 'padding: 0; border:0;' colspan='100%'><sup></sup> $𝛽_2$ = DUMMY, $𝛽_3$ = CONC_LEVEL:DUMMY</td>
+</tr>
+</tfoot>
+</table> <script type="text/x-mathjax-config">MathJax.Hub.Config({tex2jax: {inlineMath: [["$","$"]]}})</script><script async src="https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+</body>
+</html>
