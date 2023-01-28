@@ -1,3 +1,3 @@
-# R_VALIDR
+# ValidR
  
 Analytical chemistry app written in shiny / R
