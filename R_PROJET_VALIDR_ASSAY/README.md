@@ -1,5 +1,8 @@
-# ValideR
-Rmarkdown script for validation of quantitative analytical procedure
+# VALIDR Assay
+
+Category : analytical chemistry
+
+A shiny / R app for validation of quantitative analytical assay
 
 
 # Reference
