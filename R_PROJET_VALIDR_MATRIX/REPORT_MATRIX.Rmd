@@ -1,0 +1,174 @@
+---
+title: "Matrix effect analysis"
+output: bookdown::html_document2
+params:
+  dfMATRIX : NULL
+date: "`r Sys.Date()`"
+---
+
+
+<!-- #### TO DO -->
+<!-- # -> Template -->
+<!-- # -> Vérification du fichier -->
+
+
+
+
+```{r setup, message=FALSE, echo=FALSE, warning=FALSE}
+require(tidyverse)
+require(kableExtra)
+require(readxl)
+require(viridis)
+require(papeR)
+require(ggpmisc)
+
+#dfMATRIX <- read_excel("MATRIX_TEMPLATE.XLSX")
+dfMATRIX <- params$dfMATRIX %>% mutate(DUMMY=ifelse(TYPE=="with",1,0))
+
+source("MATRIX.R", local = knitr::knit_global())
+#dfMATRIX <- read_excel("MATRIX_TEMPLATE.XLSX")
+#dfMATRIX <- dfMATRIX %>% mutate(DUMMY=if_else(TYPE=="with",1,0))
+```
+
+
+
+# Introduction
+
+[ValidR – Matrix] is an application whose objective is to test whether the matrix of a drug to be assayed is likely to influence the response of the analyte.
+
+When a drug is assayed it is possible that the excipients or extraction solvents (e.g. ointment assay) influence the signal produced by the analyte compared to the signal produced by simply dissolving the analyte in a analytic solvent (e.g. methanol).
+
+For instance: the signal produced by the analyte is likely to be influenced by the other products around when analyzed by mass spectrometry (signal suppression or enhancement) or by UV-visible spetrometry.
+
+In order to ensure that the analyte as assayed in the medicinal product has a signal equivalent to that produced by a calibration standard at the same concentrations, it should be ensured that there are no significant differences between the two signals produced.
+
+For this purpose, two sets of standards (i.e. with exactly known quantities) can be made and compared, one in the pharmaceutical matrix, the other in a solvent. If pre-analytical extraction are needed, they should be performed as intended for the analysis of the medicinal products.
+
+# Materials and Methods
+
+## Data
+
+The data used to investigate the matrix effect are those reported in Appendix. 
+
+## Methods
+
+Assuming that the signal ($Y$) varies in an increasing and linear way with the concentration level introduced ($x_1$), a linear regression was performed using an additional independent variable ($𝑥_2$) to test for a matrix effect.
+
+$$
+\left\{
+  \begin{array}{ll}
+    𝑌 &\sim 𝛽_0+ 𝛽_1 𝑥_1+ 𝛽_2 𝑥_2+ 𝛽_3 𝑥_1 𝑥_2+ 𝜖\\
+    𝜀 &\sim N(0,𝜎^2)
+  \end{array}
+  \right.
+$$
+with:
+$$
+\left\{
+  \begin{array}{ll}
+    x_2 = 0 & \mbox{if calibration is performed without a matrix} \\
+    x_2 = 1 & \mbox{if calibration is performed with matrix}
+  \end{array}
+  \right.
+$$
+The assumption is that if there is no matrix effect, $𝛽_2=0$ and $𝛽_3=0$ and:
+$$
+\left\{
+  \begin{array}{ll}
+    𝑌 &\sim 𝛽_0+ 𝛽_1 𝑥_1 + 𝜖\\
+    𝜀 &\sim N(0,𝜎^2)
+  \end{array}
+  \right.
+$$
+`r paste(R.Version()$version.string)` software and `r knitr::inline_expr('stats::lm()')` function was used and the significance level was set for $𝛼=0.05$.
+
+# Results
+
+The result of the linear regression are depicted (Tab. \@ref(tab:tab2)).
+
+
+```{r test_matrix, echo = FALSE, warning=FALSE, tab.cap="Results of the linear regression",  tab.id='tab2', label='tab2'}
+
+linear_model_matrix <- lm(data = dfMATRIX, formula = SIGNAL ~ CONC_LEVEL * DUMMY)
+
+if (summary(linear_model_matrix)$coefficients[3, 4] < 0.05 | summary(linear_model_matrix)$coefficients[4, 4] < 0.05) {
+  booleanMATRIX = TRUE
+  } else {
+  booleanMATRIX = FALSE
+  }
+
+kbl(prettify(summary(linear_model_matrix))[,1:7], 
+    caption = 'Results of the linear regression.') %>%
+  kable_styling(full_width = F, position = "left") %>%
+  add_footnote(notation="none",label="$𝛽_2$ = DUMMY, $𝛽_3$ = CONC_LEVEL:DUMMY")
+
+```
+
+`r if(booleanMATRIX){"Given the results of the linear regression, $𝛽_2$ or $𝛽_3$ are statistically different from 0 and **it is likely that there is a matrix effect**"}else{"Given the results of the linear regression,$𝛽_2$ or $𝛽_3$ are not statistically different from 0 and **it is unlikely that there is a matrix effect.**"}`
+
+`r if(booleanMATRIX){"Two separate regression lines are needed to describe adequately the data"}else{"One regression line can describe adequately the data"}` as depicted on (Fig. \@ref(fig:fig2)) and `r if(!booleanMATRIX){"the validation of the analytical method should be performed with calibration standards perpared without the matrix"}else{"the validation of **the analytical method should be performed with calibration standards perpared within the matrix**"}`.
+
+```{r plot2,  echo = FALSE, warning=FALSE, fig.cap='Result of the linear regression', fig.id='fig2', label='fig2'}
+
+if (booleanMATRIX) {
+    fig2 <- ggplot(dfMATRIX, aes(x = CONC_LEVEL, y = SIGNAL, color=TYPE)) +
+    geom_point() +
+    stat_smooth(method="lm", formula = 'y ~ x', se=FALSE)+
+    stat_poly_eq(formula = y ~ x, 
+                 aes(label = paste(after_stat(eq.label), 
+                                   after_stat(rr.label), 
+                                   sep = "~~~")), 
+                 parse = TRUE) + 
+          expand_limits(x = 0, y = 0) +
+    xlab("Concentration levels") +
+    ylab("Signal") +
+    labs(color = "Matrix") +
+    scale_color_viridis(discrete = TRUE) +
+    theme_light()
+    } else {
+    fig2 <- ggplot(dfMATRIX, aes(x = CONC_LEVEL, y = SIGNAL)) +
+    geom_point() +
+    stat_smooth(method="lm", formula = 'y ~ x', se=FALSE)+
+    stat_poly_eq(formula = y ~ x, 
+                 aes(label = paste(after_stat(eq.label), after_stat(rr.label), sep = "~~~")), 
+                 parse = TRUE) + 
+          expand_limits(x = 0, y = 0) +
+    xlab("Concentration levels") +
+    ylab("Signal") +
+    scale_color_viridis(discrete = TRUE) +
+    theme_light()
+    }
+
+fig2
+```
+
+# Appendix
+
+The data used to investigate the matrix effect are those reported in the table \@ref(tab:tab1) and shown in the figure \@ref(fig:fig1). These data should be reviewed for input errors or outliers. 
+
+```{r data_load, echo = FALSE, warning=FALSE, tab.cap="Raw data input for calibration standards with and without matrix",  tab.id='tab1', label='tab1'}
+
+dfMATRIX %>% 
+  kable(caption = 'Raw data input for calibration standards with and without matrix.', booktabs = TRUE) %>%
+  kable_styling(full_width = F, position = "left")
+
+
+```
+
+
+```{r plot,  echo = FALSE, warning=FALSE, fig.cap="Visualisation of data", fig.id='fig1', label='fig1'}
+
+fig1 <- ggplot(dfMATRIX, aes(x = CONC_LEVEL, y = SIGNAL, color=TYPE)) +
+    geom_point(shape=3) +
+    xlab("Concentration levels") +
+    ylab("Signal") +
+    labs(color = "Matrix") +
+    expand_limits(x = 0, y = 0) +
+    scale_color_viridis(discrete = TRUE) +
+    theme_bw()
+fig1
+```
+
+
+==> End of Report <==
+
