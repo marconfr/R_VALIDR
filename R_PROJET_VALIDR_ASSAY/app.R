@@ -14,6 +14,7 @@
 # ================#
 
 library(shiny)
+library(shinyvalidate)
 library(readxl)
 library(writexl)
 library(DT)
@@ -22,10 +23,7 @@ library(janitor)
 library(reactable)
 library(digest)
 
-source("./R/global.R", local = TRUE)
-source("./R/SCRIPT.R", local = TRUE)
-
-
+source("R/GLOBAL.R", local = TRUE)
 
 # ===============#
 ####   UI    ####
@@ -33,7 +31,7 @@ source("./R/SCRIPT.R", local = TRUE)
 
 
 ui <- fluidPage(
-  
+
   tags$head(
     tags$style(HTML("
                     .shiny-output-error-validation {
@@ -174,9 +172,10 @@ ui <- fluidPage(
                       <li>Column A: do not edit.</li>
                       <li>Column B: do not edit.</li>
                       <li>Column C: do not edit.</li>
-                      <li>Column D: do not edit.</li>
+                      <li>Column D: enter the numeric values of the theorical target concentration without units.</li>
                       <li>Column E: do not edit.</li>
-                      <li>Column F: enter the numeric values of the concentration tested without units.</li>
+                      <li>Column F: enter the numeric values of the real concentration tested without units 
+                      (These concentrations may differ from the theoretical concentrations mentioned above depending on the actual masses weighed to make the standards) </li>
                       <li>Column G: enter the numeric raw values of the signal produced by the corresponding concentrations,without units.</li>
                     </ul>
                <p>There should be no unfilled data</p>"),
@@ -194,7 +193,17 @@ ui <- fluidPage(
       
       tabPanel("Generate report",
                HTML("<p>To generate a report, you must have uploaded the template 
-                    correctly filled  with your data as described in the previous tab</p>"),
+                    correctly filled  with your data as described in the previous tab</p>
+                    </br>
+                    <p>In order to complete the report, please fill in the following fields:</p>"),
+               HTML("<div style='border : 5px solid #FF0000'><b> The button to generate the report will only appear once valid data has been uploaded and required fields completed.</b></div>"),
+               textInput("tiB","Beta tolerance value", placeholder = "e.g. 0.8 (= 80%)"),
+               textInput("tiAL","Acceptation limits", placeholder = "e.g. 0.05 (= 5%)"),
+               textInput("tiN","Name:", placeholder = "e.g. Doe"),
+               textInput("tiFN", "First Name:",placeholder = "e.g. John"),
+               textInput("tiAS","Active substance:", placeholder = "e.g. Hydrocortisone"),
+               textInput("tiPP","Pharmaceutical preparations:", placeholder="e.g. Hydrocortisone suspension 2 mg/mL"),
+               textInput("tiUUC", "Unit used for concentrations", placeholder = "e.g. mg/L"),
                uiOutput("generate_button"),
                HTML("</br><hr>")
       )
@@ -208,6 +217,7 @@ ui <- fluidPage(
 # ===============#
 
 server <- function(input, output) {
+
   
   #####  TEMPLATE TEXT  #####
 
@@ -246,23 +256,27 @@ server <- function(input, output) {
   })
 
   output$generate_button <- renderUI({
-    if(!is.null(dfUPLOAD())){
+    if(!is.null(dfUPLOAD()) & iv$is_valid() ){
       tagList(
-        p("In order to complete the report, please fill in the following fields:"),
-        textInput("tiB","Beta tolerance value", placeholder = "e.g. 0.8"),
-        textInput("tiAL","Acceptation limits (%)", placeholder = "e.g. 5"),
-        textInput("tiN","Name:", placeholder = "e.g. Doe"),
-        textInput("tiFN", "First Name:",placeholder = "e.g. John"),
-        textInput("tiAS","Active substance:", placeholder = "e.g. Hydrocortisone"),
-        textInput("tiPP","Pharmaceutical preparations:", placeholder="e.g. Hydrocortisone suspension 2 mg/mL"),
-        textInput("tiUUC", "Unit used for concentrations", placeholder = "e.g. mg/L"),
-        textInput("tiUUS", "Unit used for signal", placeholder = "e.g. AU"),
         downloadButton("report", "Generate report")
       )
+      
+      
     } else{
       return(NULL)
     }
   })
+  
+  iv <- InputValidator$new()
+  iv$add_rule("tiB", sv_between(0.8, 0.95, message_fmt = "A number between 0.8 and 0.95 (usually 0.8)"))
+  iv$add_rule("tiAL", sv_between(left=0.01, right=0.2, message_fmt = "A number between 0.01 and 0.2 (usually 0.05 i.ex)"))
+  iv$add_rule("tiN", sv_required())
+  iv$add_rule("tiFN", sv_required())
+  iv$add_rule("tiAS", sv_required())
+  iv$add_rule("tiPP", sv_required())
+  iv$add_rule("tiUUC", sv_required())
+  iv$enable()
+  
 
   
 output$table_complete <- DT::renderDT(dfUPLOAD(), options = list(pageLength = 5, searching = FALSE))
@@ -278,23 +292,25 @@ output$table_complete <- DT::renderDT(dfUPLOAD(), options = list(pageLength = 5,
       # case we don't have write permissions to the current working dir (which
       # can happen when deployed).
       tempReport <- file.path(tempdir(), "REPORT_ASSAY.Rmd")
+      #tempScript <- file.path(tempdir(), "R/SCRIPT.R")
       file.copy("REPORT_ASSAY.Rmd", tempReport, overwrite = TRUE)
+      #file.copy("SCRIPT.R", tempScript, overwrite = TRUE)
+
       # Set up parameters to pass to Rmd document dfUPLOADS needs ()
-      params <- list(dfASSAY = dfUPLOAD())
-                     # ,
-                     # nBeta=tiB,
-                     # nACC_LIMIT = tiAL,
-                     # name = tiN,
-                     # firstname=tiFN,
-                     # substance=tiAS,
-                     # pharmprep=tiPP,
-                     # concunit=tiUUC,
-                     # signalunit=tiUUS())
+      params <- list(dfASSAY = dfUPLOAD(),
+                     nBeta=input$tiB,
+                     nACC_LIMIT = input$tiAL,
+                     name = input$tiN,
+                     firstname=input$tiFN,
+                     substance=input$tiAS,
+                     pharmprep=input$tiPP,
+                     concunit=input$tiUUC,
+                     signalunit=input$tiUUS)
       # Knit the document, passing in the `params` list, and eval it in a
       # child of the global environment (this isolates the code in the document
       # from the code in this app).
       
-      rmarkdown::render(tempReport,
+      rmarkdown::render(tempReport, #<- else put tempReport directory
         output_file = file,
         params = params,
         envir = new.env(parent = globalenv())

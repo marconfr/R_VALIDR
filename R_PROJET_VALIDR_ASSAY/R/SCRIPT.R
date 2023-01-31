@@ -21,7 +21,13 @@ require(ggpmisc)
 require(writexl)
 require(readxl)}
 
+#------------------------------------------------------------------------------#
+# Common / global variables
+#------------------------------------------------------------------------------#
 
+
+
+# il y a un problème avec le fichier RMD qui n'arrive pas à trouver le fichier script
 
 ############################################################## 
 # ========= LOAD GLOBAL VARIABLES ! (before running) ========# 
@@ -49,25 +55,14 @@ require(readxl)}
 #   ))), trim_ws = TRUE
 # )
 
-#dfASSAY <- read_excel("data_valid.xlsx")
+#dfRMD <- read_excel("data_valid.xlsx")
 
-#dfASSAY <- as.data.table(dfASSAY)
+#dfRMD <- as.data.table(dfRMD)
 
 #nBETA <- 0.9 # User defined
 #cUNIT <- "(ng/mL)"
 #nACC_LIMIT <- 10
 
-
-
-
-
-# ===================== #
-##### dfASSAY CHECKING #####
-# ===================== #
-
-check_xls <- function(dfASSAY) {
-
-}
 
 
 
@@ -82,23 +77,23 @@ check_xls <- function(dfASSAY) {
 
 #------------------------------------------------------------------------------#
 # This function calculates the parameters of different calibration curves for 
-# dfASSAY and fills a CALIB_CURVE table (global variable) with this parameters.
+# dfRMD and fills a CALIB_CURVE table (global variable) with this parameters.
 #------------------------------------------------------------------------------#
 
 compute_calibration_curves <- function(data) {
-  for (i in levels(as.factor(dfASSAY$SERIE))) {
+  for (i in levels(as.factor(dfRMD$SERIE))) {
 
     # MOD LIN
     
     linear_model <- lm(formula = SIGNAL ~ CONC_LEVEL, 
-                       data = dfASSAY %>% filter(TYPE == "CAL" & SERIE == i))
+                       data = dfRMD %>% filter(TYPE == "CAL" & SERIE == i))
     ## INSERT CAL RESIDUES
-    dfASSAY <- setDT(dfASSAY)[(SERIE == i) & TYPE == "CAL", 
+    dfRMD <- setDT(dfRMD)[(SERIE == i) & TYPE == "CAL", 
                         RES_LIN := (SIGNAL - (coef(linear_model)[2] * CONC_LEVEL + coef(linear_model)[1])) / SIGNAL * 100]
     ## PREDICT VAL CONC_LEVEL BASED ON SIGNAL
-    dfASSAY <- setDT(dfASSAY)[(SERIE == i) & (TYPE == "VAL"), 
+    dfRMD <- setDT(dfRMD)[(SERIE == i) & (TYPE == "VAL"), 
                         LIN := (SIGNAL - coef(linear_model)[1]) / coef(linear_model)[2]]
-    ## STORE CALIBRATION dfASSAY
+    ## STORE CALIBRATION dfRMD
     calib_curves <<- calib_curves %>% 
                         add_row(method = "Linear (LM)", 
                                 series = i, 
@@ -111,14 +106,14 @@ compute_calibration_curves <- function(data) {
     # MOD LIN 0
 
     linear_model_0 <- lm(formula = SIGNAL ~ 0 + CONC_LEVEL, 
-                         data = dfASSAY %>% filter(TYPE == "CAL" & SERIE == i))
+                         data = dfRMD %>% filter(TYPE == "CAL" & SERIE == i))
     ## INSERT CAL RESIDUES
-    dfASSAY <- setDT(dfASSAY)[(SERIE == i) & TYPE == "CAL", 
+    dfRMD <- setDT(dfRMD)[(SERIE == i) & TYPE == "CAL", 
                         RES_LIN_0 := (SIGNAL - coef(linear_model_0)[1] * CONC_LEVEL) / SIGNAL * 100]
     ## PREDICT VAL CONC_LEVEL BASED ON SIGNAL
-    dfASSAY <- setDT(dfASSAY)[(SERIE == i) & (TYPE == "VAL"), 
+    dfRMD <- setDT(dfRMD)[(SERIE == i) & (TYPE == "VAL"), 
                         LIN_0 := SIGNAL / coef(linear_model_0)[1]]
-    ## STORE CALIBRATION dfASSAY
+    ## STORE CALIBRATION dfRMD
     calib_curves <<- calib_curves %>% 
                         add_row(method = "Linear 0 (LM)", 
                                 series = i, 
@@ -131,14 +126,14 @@ compute_calibration_curves <- function(data) {
     # MOD LIN weighed 1/X
 
     linear_model_1X <- lm(formula = SIGNAL ~ CONC_LEVEL, 
-                          data = dfASSAY %>% filter(TYPE == "CAL" & SERIE == i), weights = 1 / CONC_LEVEL)
+                          data = dfRMD %>% filter(TYPE == "CAL" & SERIE == i), weights = 1 / CONC_LEVEL)
     ## INSERT CAL RESIDUES
-    dfASSAY <- setDT(dfASSAY)[(SERIE == i) & (TYPE == "CAL"), 
+    dfRMD <- setDT(dfRMD)[(SERIE == i) & (TYPE == "CAL"), 
                         RES_LIN_1X := (SIGNAL - (coef(linear_model_1X)[2] * CONC_LEVEL + coef(linear_model_1X)[1])) / SIGNAL * 100]
     ## PREDICT VAL CONC_LEVEL BASED ON SIGNAL
-    dfASSAY <- setDT(dfASSAY)[(SERIE == i) & (TYPE == "VAL"), 
+    dfRMD <- setDT(dfRMD)[(SERIE == i) & (TYPE == "VAL"), 
                         LIN_1X := (SIGNAL - coef(linear_model_1X)[1]) / coef(linear_model_1X)[2]]
-    ## STORE CALIBRATION dfASSAY
+    ## STORE CALIBRATION dfRMD
     calib_curves <<- calib_curves %>% 
                         add_row(method = "Linear weighed 1/X (LM)", 
                                 series = i, 
@@ -151,12 +146,12 @@ compute_calibration_curves <- function(data) {
     # MOD LIN weighed 1/Y
 
     linear_model_1Y <- lm(formula = SIGNAL ~ CONC_LEVEL, 
-                          data = dfASSAY %>% filter(TYPE == "CAL" & SERIE == i), weights = 1 / SIGNAL)
+                          data = dfRMD %>% filter(TYPE == "CAL" & SERIE == i), weights = 1 / SIGNAL)
     ## INSERT CAL RESIDUES
-    dfASSAY <- setDT(dfASSAY)[(SERIE == i) & TYPE == "CAL", 
+    dfRMD <- setDT(dfRMD)[(SERIE == i) & TYPE == "CAL", 
                         RES_LIN_1Y := (SIGNAL - (coef(linear_model_1Y)[2] * CONC_LEVEL + coef(linear_model_1Y)[1])) / SIGNAL * 100]
     ## PREDICT VAL CONC_LEVEL BASED ON SIGNAL
-    dfASSAY <- setDT(dfASSAY)[(SERIE == i) & (TYPE == "VAL"), 
+    dfRMD <- setDT(dfRMD)[(SERIE == i) & (TYPE == "VAL"), 
                         LIN_1Y := (SIGNAL - coef(linear_model_1Y)[1]) / coef(linear_model_1Y)[2]]
     calib_curves <<- calib_curves %>% 
                         add_row(method = "Linear weighed 1/Y (LM)", 
@@ -169,14 +164,14 @@ compute_calibration_curves <- function(data) {
     # MOD LIN 0->max
 
     linear_model_0max <- lm(formula = SIGNAL ~ 0 + CONC_LEVEL, 
-                            data = dfASSAY %>% filter(TYPE == "CAL" & SERIE == i & CONC_LEVEL == tail(levels(as.factor(dfASSAY$CONC_LEVEL[dfASSAY$TYPE == "CAL"])), n = 1)))
+                            data = dfRMD %>% filter(TYPE == "CAL" & SERIE == i & CONC_LEVEL == tail(levels(as.factor(dfRMD$CONC_LEVEL[dfRMD$TYPE == "CAL"])), n = 1)))
     ## INSERT CAL RESIDUES
-    dfASSAY <- setDT(dfASSAY)[(SERIE == i) & TYPE == "CAL", 
+    dfRMD <- setDT(dfRMD)[(SERIE == i) & TYPE == "CAL", 
                         RES_LIN_0MAX := (SIGNAL - (coef(linear_model_0max)[1] * CONC_LEVEL)) / SIGNAL * 100]
     ## PREDICT VAL CONC_LEVEL BASED ON SIGNAL
-    dfASSAY <- setDT(dfASSAY)[(SERIE == i) & (TYPE == "VAL"), 
+    dfRMD <- setDT(dfRMD)[(SERIE == i) & (TYPE == "VAL"), 
                         LIN_0MAX := SIGNAL / coef(linear_model_0max)[1]]
-    ## STORE CALIBRATION dfASSAY
+    ## STORE CALIBRATION dfRMD
     calib_curves <<- calib_curves %>% 
                         add_row(method = "Linear 0-max (LM)", 
                                 series = i, 
@@ -189,12 +184,12 @@ compute_calibration_curves <- function(data) {
 }
 
 # Running function compute_calibration_curves()
-compute_calibration_curves(dfASSAY)
+# compute_calibration_curves(dfRMD)
 
 
 
 #------------------------------------------------------------------------------#
-# This function plot a curve for each SERIE of the string1 TYPE in dfASSAY     
+# This function plot a curve for each SERIE of the string1 TYPE in dfRMD     
 #------------------------------------------------------------------------------#
 
 print_plot_standards <- function(data, string1) {
@@ -211,10 +206,10 @@ print_plot_standards <- function(data, string1) {
 }
 
 # Function testing
-#ggplotly(print_plot_standards(dfASSAY, "CAL") + geom_smooth(method = "lm", se = TRUE, color = "black", formula = y ~ x, size = 0.25))
+#ggplotly(print_plot_standards(dfRMD, "CAL") + geom_smooth(method = "lm", se = TRUE, color = "black", formula = y ~ x, size = 0.25))
 
 #------------------------------------------------------------------------------#
-# This function returns a structured table (kable) the string1 TYPE in dfASSAY         
+# This function returns a structured table (kable) the string1 TYPE in dfRMD         
 # (this is to ease incorporation of raw data values in the report)
 #------------------------------------------------------------------------------#
 
@@ -229,13 +224,13 @@ print_table_rawdata <- function(data, string1) {
 }
 
 # testing
-#print_table_rawdata(dfASSAY, "CAL")
+#print_table_rawdata(dfRMD, "CAL")
 
 
 #------------------------------------------------------------------------------#
 # This function returns a plot (ggplot) of relative bias = f(CONC_LEVEL) for the 
 # calibration standards according to the type of regression chosen.
-# The dfASSAY must have been processed with compute_calibration_curves()
+# The dfRMD must have been processed with compute_calibration_curves()
 #------------------------------------------------------------------------------#
 
 plot_residues <- function(data) {
@@ -294,7 +289,7 @@ plot_residues <- function(data) {
 }
 
 #testing
-#ggplotly(plot_residues(dfASSAY))
+#ggplotly(plot_residues(dfRMD))
 
 
 
@@ -318,11 +313,11 @@ compute_validation_data <- function(data) {
 
   # MEAN of Inverse prediction by levels
   cols <- c("LIN", "LIN_0", "LIN_1X", "LIN_1Y", "LIN_0MAX")
-  dfASSAY <- data[, paste(cols, "hat", sep = "_") := lapply(.SD, mean, na.rm = TRUE), 
+  dfRMD <- data[, paste(cols, "hat", sep = "_") := lapply(.SD, mean, na.rm = TRUE), 
                by = CONC_LEVEL, .SDcols = cols][]
 
-  # SELECT ONLY VALIDATION dfASSAY
-  DATA_VALID_1 <- dfASSAY %>%
+  # SELECT ONLY VALIDATION dfRMD
+  DATA_VALID_1 <- dfRMD %>%
                     select(-contains("RES")) %>%
                     filter(TYPE == "VAL")
 
@@ -376,7 +371,7 @@ compute_validation_data <- function(data) {
 }
 
 #testing
-compute_validation_data(dfASSAY)
+#compute_validation_data(dfRMD)
 #viewing
 #check = listVALID[["LIN"]]
 
@@ -499,4 +494,4 @@ anova_model_stat <- function(data) {
   bp <- bptest(linear_model_stat(data))
   return(bp)
 }
-anova_model_stat(listVALID[["LIN"]])
+#anova_model_stat(listVALID[["LIN"]])

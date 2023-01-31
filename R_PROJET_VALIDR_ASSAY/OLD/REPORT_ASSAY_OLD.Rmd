@@ -1,0 +1,536 @@
+---
+title: "Assay validation analysis"
+output: 
+  bookdown::html_document2:
+    fig_caption: yes
+    theme: spacelab
+    toc: yes
+    toc_depth: 2
+params:
+  dfASSAY : NULL
+  nBeta : NULL
+  nACC_LIMIT : NULL
+  name : NULL 
+  firstname : NULL
+  substance : NULL
+  pharmprep : NULL
+  concunit : NULL
+  signalunit : NULL
+date: "`r Sys.Date()`"
+---
+
+```{r setup, warning=FALSE, message=FALSE, echo=FALSE}
+
+
+knitr::opts_chunk$set(echo = FALSE)
+
+require(dplyr) 
+require(data.table)
+require(ggplot2)
+require(kableExtra)
+require(plotly)
+require(viridis)
+require(ggpmisc)
+require(readxl)
+require(papeR)
+require(lmtest)
+require(pander)
+
+calib_curves <- data.frame(
+  "method" = character(),
+  "series" = character(),
+  "intercept" = numeric(),
+  "slope" = numeric(),
+  "aic" = numeric(),
+  "r2" = numeric()
+)
+
+diag_calib <- data.frame(resid = numeric())
+
+what_to_grep <- c("LIN", "LIN_0", "LIN_1X", "LIN_1Y", "LIN_0MAX")
+
+listVALID <- list()
+
+dfASSAY <- params$dfASSAY
+#dfASSAY <- read_excel("data_valid2.xlsx")
+
+nBETA <- 0.8 
+cUNIT <- "(ng/mL)"
+nACC_LIMIT <- 10
+
+#source("SCRIPT.R")
+
+```
+
+```{=html}
+<!-- Reste à mettre les méthodes et calculs
+ANOVA sur les profils de linarité
+Faire des copier coller
+Faciliter l'interprétation -->
+```
+# Introduction
+
+When writing a paper using a method validated by this software, we recommend that you cite the software beyond and provide the raw data used as supplementary material for your paper.
+
+To cite this software :
+
+> ValidR - Assay
+
+# Methods
+
+## Statistical analysis
+
+All statistical were produced using the method described in Hubert, P. et al. 2007. Harmonization of strategies for the validation of quantitative analytical procedures. A SFSTP proposal - part III. J Pharm Biomed Anal 45: 82-96. And algorithm were checked using the data providied with the article.
+
+The $\beta$ value used for the calculation of the $\beta$ expectation tolerance interval was set to `r paste(nBETA)` and the acceptance limits was fixed to `r paste(nACC_LIMIT,"%")`.
+
+The estimation of the parameters of the calibration curves was obtained by the ordinary least squares method (OLS) with `r paste(R.Version()$version.string)` software [@R-base] and the `r knitr::inline_expr('stats::lm()')` function was used. <!-- This reports was produced using pacakges [@R-data.table;@R-dplyr;@R-ggplot2;@R-ggpmisc;@R-ggpp;@R-kableExtra;@R-plotly;@R-readxl;@R-viridis;@R-viridisLite] -->.
+
+
+# Analysis of response function (calibration curves)
+
+## Methods and Data
+
+Response functions $signal=f(concentration)$ were analyzed using `stats4::lm()` function in R, using calibration data provided Table \@ref(tab:calibdata) and Figure \@ref(fig:calibdraw)).
+
+
+```{r }
+
+calib_curves <- data.frame("method"=character(),
+                           "series"=character(),
+                           "intercept"=numeric(),
+                           "slope"=numeric(),
+                           "aic"=numeric(),
+                           "r2"=numeric())
+
+diag_calib <- data.frame(resid=numeric())
+
+compute_calibration_curves(dfASSAY)
+
+```
+
+Analysis were performed using :
+  
+  -   Linear function (Linear)
+    -   Linear trough 0 function (Linear 0)
+      -   Linear trough 0 and the highest concentration levels function (Linear 0 - Max)
+        -   Linear function with weights (1/Y and 1/X) (Linear weighed 1/X and Linear weighed 1/Y)
+
+```{r calibdraw, echo=FALSE, fig.cap="Calibration data", fig.fullwidth=TRUE}
+
+ggplotly(print_plot_standards(dfASSAY, "CAL"))
+
+```
+
+## Response functions obtained
+
+### Regression analysis
+
+The interactive table \@ref(tab:resultscalib) shows the values obtained with regressions :
+  
+```{r resultscalib, echo=FALSE}
+
+calib_curves %>% arrange(method) %>%
+  kableExtra::kable(col.names = c('Methods', 'Serie', 'Intercept', 'Slope', 'AIC', "R²"), 
+                    caption = "Results of linear regressions performed") %>%
+  kable_styling("hover") 
+
+```
+
+### Residues for each calibration curves at each levels
+
+The residues obtained are shown in the interactive figure \@ref(fig:calibresidues).
+
+You can click or double-click on a legend to isolate or display a curve. You can zoom in on a part of the figure.
+
+```{r calibresidues, echo=FALSE, fig.width=10,fig.height=4,fig.fullwidth=TRUE, fig.cap="Relative bias calculated from regression"}
+
+ggplotly(plot_residues(dfASSAY))
+
+```
+# Validation
+
+```{r, echo=FALSE}
+
+compute_validation_data(dfASSAY)
+
+```
+
+## Using a linear calibration curve
+
+### Trueness and precision obtained
+
+Trueness and precision are depicted on table \@ref(tab:iplinabs) and \@ref(tab:iplinrel)
+
+```{r iplinabs, echo=FALSE, warning=FALSE, fig.width=10,fig.height=4,fig.fullwidth=TRUE, fig.cap="Trueness and precision obtained"}
+
+summary_validation_abs(as.data.frame(listVALID[["LIN"]]), names(listVALID["LIN"]))
+
+```
+
+```{r iplinrel, echo=FALSE, warning=FALSE, fig.width=10,fig.height=4,fig.fullwidth=TRUE, fig.cap="Trueness and precision obtained"}
+
+summary_validation_rel(as.data.frame(listVALID[["LIN"]]), names(listVALID["LIN"]))
+
+```
+
+### Accuracy profile
+
+Accuracy profile are shown Figure \@ref(fig:aplin). The 𝛽-tolerance interval (blue lines) should be entirely within the acceptance limits (red dashed lines).
+
+```{r aplin, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Accuracy profiles  (red dashed line: acceptance limits, blue lines: 𝛽-tolerance intervals)."}
+
+ggplotly(plot_validation(as.data.frame(listVALID[["LIN"]]), names(listVALID["LIN"])))
+
+
+```
+
+### Linearity profile
+
+Linearity profile are shown Figure \@ref(fig:lplin). You should check that the black line (linear model) should be superimposed on the red dashed identity line.
+
+```{r lplin, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Linearity profiles (red dashed line: identity line, black lines: linear regression lines, blue lines: 𝛽-tolerance intervals)."}
+
+ggplotly(plot_linearity(as.data.frame(listVALID[["LIN"]]), names(listVALID["LIN"])))
+
+```
+
+### Linear regression
+
+`r if(summary(linear_model_stat(listVALID[["LIN"]]))$coefficients[1,4]<0.05){ "The p-value for the intercept is < 0.05 which is in favor of a significant value (FAIL)"}else{ "The p-value for the intercept is > 0.05 which is in favor of a non-significant value (PASS)"}`
+
+`r if(summary(linear_model_stat(listVALID[["LIN"]]))$coefficients[2,4]<0.05){ "The p-value for the slope is < 0.05 which is in favor of a significant value (PASS)"}else{ "The p-value for the slope is > 0.05 which is in favor of a non-significant value (FAIL)"}`
+
+```{r}
+
+kbl(prettify(summary(linear_model_stat(listVALID[["LIN"]]))), 
+    caption = 'Results of the linear regression.') %>%
+  kable_styling(full_width = F, position = "left") 
+```
+
+### Studentized Breusch-Pagan test for heteroskedasticity
+
+`r if(bptest(linear_model_stat(listVALID[["LIN"]]))$p.value<0.05){"The p-value < 0.05 which is in favor of heterosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are non-constant (FAIL)"}else{"The p-value > O.05 which is in favor of homosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are constant (PASS)"}`
+
+<!-- is in favor of heterosedasticity (the standard deviations of a calculated concentrations as related to introduced concentrations, are non-constant)"} else {"A p-value > 0.05 is in favor of homosedasticity (the standard deviations of a calculated concentrations as related to introduced concentrations, are constant")}` -->
+
+```{r }
+
+pander(bptest(linear_model_stat(listVALID[["LIN"]])), caption="Result of the studentized Breusch-Pagan test")
+
+```
+
+## Using a linear forced trough 0 calibration curve
+
+### Trueness and precision obtained
+
+Trueness and precision are depicted on table \@ref(tab:iplinabs) and \@ref(tab:iplinrel)
+
+```{r iplin0abs, echo=FALSE, warning=FALSE, fig.width=10,fig.height=4,fig.fullwidth=TRUE, fig.cap="Trueness and precision obtained"}
+
+summary_validation_abs(as.data.frame(listVALID[["LIN_0"]]), names(listVALID["LIN_0"]))
+
+```
+
+```{r iplin0rel, echo=FALSE, warning=FALSE, fig.width=10,fig.height=4,fig.fullwidth=TRUE, fig.cap="Trueness and precision obtained"}
+
+summary_validation_rel(as.data.frame(listVALID[["LIN_0"]]), names(listVALID["LIN_0"]))
+
+```
+
+### Accuracy profile
+
+Accuracy profile are shown Figure \@ref(fig:aplin). The 𝛽-tolerance interval (blue lines) should be entirely within the acceptance limits (red dashed lines).
+
+```{r aplin0, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Accuracy profiles  (red dashed line: acceptance limits, blue lines: 𝛽-tolerance intervals)."}
+
+  ggplotly(plot_validation(as.data.frame(listVALID[["LIN_0"]]), names(listVALID["LIN_0"])))
+
+
+```
+
+### Linearity profile
+
+Linearity profile are shown Figure \@ref(fig:lplin). You should check that the black line (linear model) should be superimposed on the red dashed identity line.
+
+```{r lplin0, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Linearity profiles (red dashed line: identity line, black lines: linear regression lines, blue lines: 𝛽-tolerance intervals)."}
+
+  ggplotly(plot_linearity(as.data.frame(listVALID[["LIN_0"]]), names(listVALID["LIN_0"])))
+
+```
+
+### Linear regression
+
+`r if(summary(linear_model_stat(listVALID[["LIN_0"]]))$coefficients[1,4]<0.05){ "The p-value for the intercept is < 0.05 which is in favor of a significant value (FAIL)"}else{ "The p-value for the intercept is > 0.05 which is in favor of a non-significant value (PASS)"}`
+
+`r if(summary(linear_model_stat(listVALID[["LIN_0"]]))$coefficients[2,4]<0.05){ "The p-value for the slope is < 0.05 which is in favor of a significant value (PASS)"}else{ "The p-value for the slope is > 0.05 which is in favor of a non-significant value (FAIL)"}`
+
+```{r}
+
+kbl(prettify(summary(linear_model_stat(listVALID[["LIN_0"]]))), 
+    caption = 'Results of the linear regression.') %>%
+  kable_styling(full_width = F, position = "left") 
+```
+
+### Studentized Breusch-Pagan test for heteroskedasticity
+
+`r if(bptest(linear_model_stat(listVALID[["LIN_0"]]))$p.value<0.05){"The p-value < 0.05 which is in favor of heterosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are non-constant (FAIL)"}else{"The p-value > O.05 which is in favor of homosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are constant (PASS)"}`
+
+```{r }
+
+pander(bptest(linear_model_stat(listVALID[["LIN_0"]])), caption="Result of the studentized Breusch-Pagan test")
+
+```
+
+## Using a linear calibration curve with the highest level only and forced trough 0
+
+### Trueness and precision obtained
+
+Trueness and precision are depicted on table \@ref(tab:iplinabs) and \@ref(tab:iplinrel)
+
+```{r iplinmaxabs, echo=FALSE, warning=FALSE, fig.width=10,fig.height=4,fig.fullwidth=TRUE, fig.cap="Trueness and precision obtained"}
+
+summary_validation_abs(as.data.frame(listVALID[["LIN_0MAX"]]), names(listVALID["LIN_0MAX"]))
+
+```
+
+```{r iplinmaxrel, echo=FALSE, warning=FALSE, fig.width=10,fig.height=4,fig.fullwidth=TRUE, fig.cap="Trueness and precision obtained"}
+
+summary_validation_rel(as.data.frame(listVALID[["LIN_0MAX"]]), names(listVALID["LIN_0MAX"]))
+
+```
+
+### Accuracy profile
+
+Accuracy profile are shown Figure \@ref(fig:aplin). The 𝛽-tolerance interval (blue lines) should be entirely within the acceptance limits (red dashed lines).
+
+```{r aplinmax, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Accuracy profiles  (red dashed line: acceptance limits, blue lines: 𝛽-tolerance intervals)."}
+
+  ggplotly(plot_validation(as.data.frame(listVALID[["LIN_0MAX"]]), names(listVALID["LIN_0MAX"])))
+
+
+```
+
+### Linearity profile
+
+Linearity profile are shown Figure \@ref(fig:lplin). You should check that the black line (linear model) should be superimposed on the red dashed identity line.
+
+```{r lplinmax, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Linearity profiles (red dashed line: identity line, black lines: linear regression lines, blue lines: 𝛽-tolerance intervals)."}
+
+  ggplotly(plot_linearity(as.data.frame(listVALID[["LIN_0MAX"]]), names(listVALID["LIN_0MAX"])))
+
+```
+
+### Linear regression
+
+`r if(summary(linear_model_stat(listVALID[["LIN_0MAX"]]))$coefficients[1,4]<0.05){ "The p-value for the intercept is < 0.05 which is in favor of a significant value (FAIL)"}else{ "The p-value for the intercept is > 0.05 which is in favor of a non-significant value (PASS)"}`
+
+`r if(summary(linear_model_stat(listVALID[["LIN_0MAX"]]))$coefficients[2,4]<0.05){ "The p-value for the slope is < 0.05 which is in favor of a significant value (PASS)"}else{ "The p-value for the slope is > 0.05 which is in favor of a non-significant value (FAIL)"}`
+
+```{r}
+
+kbl(prettify(summary(linear_model_stat(listVALID[["LIN_0MAX"]]))), 
+    caption = 'Results of the linear regression.') %>%
+  kable_styling(full_width = F, position = "left") 
+```
+
+### Studentized Breusch-Pagan test for heteroskedasticity
+
+`r if(bptest(linear_model_stat(listVALID[["LIN_0MAX"]]))$p.value<0.05){"The p-value < 0.05 which is in favor of heterosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are non-constant (FAIL)"}else{"The p-value > O.05 which is in favor of homosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are constant (PASS)"}`
+
+<!-- is in favor of heterosedasticity (the standard deviations of a calculated concentrations as related to introduced concentrations, are non-constant)"} else {"A p-value > 0.05 is in favor of homosedasticity (the standard deviations of a calculated concentrations as related to introduced concentrations, are constant")}` -->
+  
+```{r }
+
+pander(bptest(linear_model_stat(listVALID[["LIN_0MAX"]])), caption="Result of the studentized Breusch-Pagan test")
+
+```
+
+## Using a weighed (1/Y) linear calibration curve
+
+### Trueness and precision obtained
+
+Trueness and precision are depicted on table \@ref(tab:iplinabs) and \@ref(tab:iplinrel)
+
+```{r iplin1yabs, echo=FALSE, warning=FALSE, fig.width=10,fig.height=4,fig.fullwidth=TRUE, fig.cap="Trueness and precision obtained"}
+
+summary_validation_abs(as.data.frame(listVALID[["LIN_1Y"]]), names(listVALID["LIN_1Y"]))
+
+```
+
+```{r iplin1yrel, echo=FALSE, warning=FALSE, fig.width=10,fig.height=4,fig.fullwidth=TRUE, fig.cap="Trueness and precision obtained"}
+
+summary_validation_rel(as.data.frame(listVALID[["LIN_1Y"]]), names(listVALID["LIN_1Y"]))
+
+```
+
+### Accuracy profile
+
+Accuracy profile are shown Figure \@ref(fig:aplin). The 𝛽-tolerance interval (blue lines) should be entirely within the acceptance limits (red dashed lines).
+
+```{r aplin1y, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Accuracy profiles  (red dashed line: acceptance limits, blue lines: 𝛽-tolerance intervals)."}
+
+ggplotly(plot_validation(as.data.frame(listVALID[["LIN_1Y"]]), names(listVALID["LIN_1Y"])))
+
+
+```
+
+### Linearity profile
+
+Linearity profile are shown Figure \@ref(fig:lplin). You should check that the black line (linear model) should be superimposed on the red dashed identity line.
+
+```{r lplin1y, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Linearity profiles (red dashed line: identity line, black lines: linear regression lines, blue lines: 𝛽-tolerance intervals)."}
+
+ggplotly(plot_linearity(as.data.frame(listVALID[["LIN_1Y"]]), names(listVALID["LIN_1Y"])))
+
+```
+
+### Linear regression
+
+`r if(summary(linear_model_stat(listVALID[["LIN_1Y"]]))$coefficients[1,4]<0.05){ "The p-value for the intercept is < 0.05 which is in favor of a significant value (FAIL)"}else{ "The p-value for the intercept is > 0.05 which is in favor of a non-significant value (PASS)"}`
+
+`r if(summary(linear_model_stat(listVALID[["LIN_1Y"]]))$coefficients[2,4]<0.05){ "The p-value for the slope is < 0.05 which is in favor of a significant value (PASS)"}else{ "The p-value for the slope is > 0.05 which is in favor of a non-significant value (FAIL)"}`
+
+```{r}
+
+kbl(prettify(summary(linear_model_stat(listVALID[["LIN_1Y"]]))), 
+    caption = 'Results of the linear regression.') %>%
+  kable_styling(full_width = F, position = "left") 
+```
+
+### Studentized Breusch-Pagan test for heteroskedasticity
+
+`r if(bptest(linear_model_stat(listVALID[["LIN_1Y"]]))$p.value<0.05){"The p-value < 0.05 which is in favor of heterosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are non-constant (FAIL)"}else{"The p-value > O.05 which is in favor of homosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are constant (PASS)"}`
+
+```{r }
+
+pander(bptest(linear_model_stat(listVALID[["LIN_1Y"]])), caption="Result of the studentized Breusch-Pagan test")
+
+```
+
+## Using a weighed (1/X) linear calibration curve
+
+### Trueness and precision obtained
+
+Trueness and precision are depicted on table \@ref(tab:iplinabs) and \@ref(tab:iplinrel)
+
+```{r iplin1xabs, echo=FALSE, warning=FALSE, fig.width=10,fig.height=4,fig.fullwidth=TRUE, fig.cap="Trueness and precision obtained"}
+
+summary_validation_abs(as.data.frame(listVALID[["LIN_1X"]]), names(listVALID["LIN_1X"]))
+
+```
+
+```{r iplin1xrel, echo=FALSE, warning=FALSE, fig.width=10,fig.height=4,fig.fullwidth=TRUE, fig.cap="Trueness and precision obtained"}
+
+summary_validation_rel(as.data.frame(listVALID[["LIN_1X"]]), names(listVALID["LIN_1X"]))
+
+```
+
+### Accuracy profile
+
+Accuracy profile are shown Figure \@ref(fig:aplin). The 𝛽-tolerance interval (blue lines) should be entirely within the acceptance limits (red dashed lines).
+
+```{r aplin1x, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Accuracy profiles  (red dashed line: acceptance limits, blue lines: 𝛽-tolerance intervals)."}
+
+ggplotly(plot_validation(as.data.frame(listVALID[["LIN_1X"]]), names(listVALID["LIN_1X"])))
+
+
+```
+
+### Linearity profile
+
+Linearity profile are shown Figure \@ref(fig:lplin). You should check that the black line (linear model) should be superimposed on the red dashed identity line.
+
+```{r lplin1x, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Linearity profiles (red dashed line: identity line, black lines: linear regression lines, blue lines: 𝛽-tolerance intervals)."}
+
+ggplotly(plot_linearity(as.data.frame(listVALID[["LIN_1X"]]), names(listVALID["LIN_1X"])))
+
+```
+
+### Linear regression
+
+`r if(summary(linear_model_stat(listVALID[["LIN_1X"]]))$coefficients[1,4]<0.05){ "The p-value for the intercept is < 0.05 which is in favor of a significant value (FAIL)"}else{ "The p-value for the intercept is > 0.05 which is in favor of a non-significant value (PASS)"}`
+
+`r if(summary(linear_model_stat(listVALID[["LIN_1X"]]))$coefficients[2,4]<0.05){ "The p-value for the slope is < 0.05 which is in favor of a significant value (PASS)"}else{ "The p-value for the slope is > 0.05 which is in favor of a non-significant value (FAIL)"}`
+
+```{r}
+
+kbl(prettify(summary(linear_model_stat(listVALID[["LIN_1X"]]))), 
+    caption = 'Results of the linear regression.') %>%
+  kable_styling(full_width = F, position = "left") 
+```
+
+### Studentized Breusch-Pagan test for heteroskedasticity
+
+`r if(bptest(linear_model_stat(listVALID[["LIN_1X"]]))$p.value<0.05){"The p-value < 0.05 which is in favor of heterosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are non-constant (FAIL)"}else{"The p-value > O.05 which is in favor of homosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are constant (PASS)"}`
+
+```{r }
+
+pander(bptest(linear_model_stat(listVALID[["LIN_1X"]])), caption="Result of the studentized Breusch-Pagan test")
+
+```
+
+# Raw data
+
+```{r calibdata, echo=FALSE}
+
+print_table_rawdata(dfASSAY, "CAL")
+
+```
+
+```{r validdata, echo=FALSE}
+
+print_table_rawdata(dfASSAY, "VAL")
+
+```
+
+# Packages
+
+Aphalo, Pedro J. 2022a. Ggpmisc: Miscellaneous Extensions to Ggplot2. https://CRAN.R-project.org/package=ggpmisc.
+
+Aphalo, Pedro J. 2022b. Ggpp: Grammar Extensions to Ggplot2. https://CRAN.R-project.org/package=ggpp.
+
+Dahl, David B., David Scott, Charles Roosen, Arni Magnusson, and Jonathan Swinton. 2019. Xtable: Export Tables to LaTeX or HTML. http://xtable.r-forge.r-project.org/.
+
+Daróczi, Gergely, and Roman Tsegelskyi. 2022. Pander: An r Pandoc Writer. https://rapporter.github.io/pander/.
+
+Dowle, Matt, and Arun Srinivasan. 2022. Data.table: Extension of ‘Data.frame‘. https://CRAN.R-project.org/package=data.table.
+
+Fox, John, and Sanford Weisberg. 2019. An R Companion to Applied Regression. Third. Thousand Oaks CA: Sage. https://socialsciences.mcmaster.ca/jfox/Books/Companion/.
+
+Fox, John, Sanford Weisberg, and Brad Price. 2022a. Car: Companion to Applied Regression. https://CRAN.R-project.org/package=car.
+
+Fox, John, Sanford Weisberg, and Brad Price. 2022b. carData: Companion to Applied Regression Data Sets. https://CRAN.R-project.org/package=carData.
+
+Garnier, Simon. 2021. Viridis: Colorblind-Friendly Color Maps for r. https://CRAN.R-project.org/package=viridis.
+
+Garnier, Simon.. 2022. viridisLite: Colorblind-Friendly Color Maps (Lite Version). https://CRAN.R-project.org/package=viridisLite.
+
+Hofner, Benjamin. 2021. papeR: A Toolbox for Writing Pretty Papers and Reports. https://CRAN.R-project.org/package=papeR.
+
+Hofner, Benjamin, and with contributions by many others. 2021. papeR: A Toolbox for Writing Pretty Papers and Reports. https://github.com/hofnerb/papeR.
+
+Hothorn, Torsten, Achim Zeileis, Richard W. Farebrother, and Clint Cummins. 2022. Lmtest: Testing Linear Regression Models. https://CRAN.R-project.org/package=lmtest.
+
+R Core Team. 2022. R: A Language and Environment for Statistical Computing. Vienna, Austria: R Foundation for Statistical Computing. https://www.R-project.org/.
+
+Sievert, Carson. 2020. Interactive Web-Based Data Visualization with r, Plotly, and Shiny. Chapman; Hall/CRC. https://plotly-r.com.
+
+Sievert, Carson, Chris Parmer, Toby Hocking, Scott Chamberlain, Karthik Ram, Marianne Corvellec, and Pedro Despouy. 2022. Plotly: Create Interactive Web Graphics via Plotly.js. https://CRAN.R-project.org/package=plotly.
+
+Wickham, Hadley. 2016. Ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York. https://ggplot2.tidyverse.org.
+
+Wickham, Hadley, and Jennifer Bryan. 2022. Readxl: Read Excel Files. https://CRAN.R-project.org/package=readxl.
+
+Wickham, Hadley, Winston Chang, Lionel Henry, Thomas Lin Pedersen, Kohske Takahashi, Claus Wilke, Kara Woo, Hiroaki Yutani, and Dewey Dunnington. 2022. Ggplot2: Create Elegant Data Visualisations Using the Grammar of Graphics. https://CRAN.R-project.org/package=ggplot2.
+
+Wickham, Hadley, Romain François, Lionel Henry, and Kirill Müller. 2022. Dplyr: A Grammar of Data Manipulation. https://CRAN.R-project.org/package=dplyr.
+
+Zeileis, Achim, and Gabor Grothendieck. 2005. “Zoo: S3 Infrastructure for Regular and Irregular Time Series.” Journal of Statistical Software 14 (6): 1–27. https://doi.org/10.18637/jss.v014.i06.
+
+Zeileis, Achim, Gabor Grothendieck, and Jeffrey A. Ryan. 2022. Zoo: S3 Infrastructure for Regular and Irregular Time Series (z’s Ordered Observations). https://zoo.R-Forge.R-project.org/.
+
+Zeileis, Achim, and Torsten Hothorn. 2002. “Diagnostic Checking in Regression Relationships.” R News 2 (3): 7–10. https://CRAN.R-project.org/doc/Rnews/.
+
+Zhu, Hao. 2021. kableExtra: Construct Complex Table with Kable and Pipe Syntax. https://CRAN.R-project.org/package=kableExtra.
+
