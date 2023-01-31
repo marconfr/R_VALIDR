@@ -8,26 +8,24 @@ output:
     toc_depth: 2
 params:
   dfASSAY : NULL
-  nBeta : NULL
-  nACC_LIMIT : NULL
-  name : NULL 
-  firstname : NULL
-  substance : NULL
-  pharmprep : NULL
-  concunit : NULL
-  signalunit : NULL
+  nBeta : 0.8
+  nACC_LIMIT : 5
+  name : "NULL" 
+  firstname : "NULL"
+  substance : "NULL"
+  pharmprep : "NULL"
+  concunit : "NULL"
+  signalunit : "NULL"
 date: "`r Sys.Date()`"
 ---
 
-```{r setup, include=FALSE, message=FALSE}
+```{r setup, warning=FALSE, message=FALSE, echo=FALSE}
+
+
 knitr::opts_chunk$set(echo = FALSE)
-#require(readr)
+
 require(dplyr) 
-#require(rlm)
-#require(datalist)
-#require(modelr)
 require(data.table)
-#require(bblme)
 require(ggplot2)
 require(kableExtra)
 require(plotly)
@@ -37,16 +35,464 @@ require(readxl)
 require(papeR)
 require(lmtest)
 require(pander)
-#knitr::write_bib(c(.packages()), file = "packages.bib")
+
+calib_curves <- data.frame(
+  "method" = character(),
+  "series" = character(),
+  "intercept" = numeric(),
+  "slope" = numeric(),
+  "aic" = numeric(),
+  "r2" = numeric()
+)
+
+diag_calib <- data.frame(resid = numeric())
+what_to_grep <- c("LIN", "LIN_0", "LIN_1X", "LIN_1Y", "LIN_0MAX")
+listVALID <- list()
+
+dfRMD <- params$dfASSAY
+#dfRMD <- read_excel("data_valid2.xlsx") for RMD debug
+
+nBeta <- as.double(params$nBeta)
+nACC_LIMIT <- as.double(params$nACC_LIMIT)
+sName <- params$name
+sFirstName <- params$firstname
+sSubstance <- params$substance
+sPharmPrep <- params$pharmprep
+sConcUnit <- params$concunit
+sSignalUnit <- params$signalunit
 
 
-#dfASSAY <- read_excel("data_valid.xlsx")
-#dfASSAY <- as.data.table(dfASSAY)
-nBETA <- 0.8 
-cUNIT <- "(ng/mL)"
-nACC_LIMIT <- 10
+# Function were placed directly in RMarkdown files
 
-#source("../R/SCRIPT.R", local = knitr::knit_global())
+# =========================== #
+##### CALIBRATION CURVES ######
+# =========================== #
+
+# CAL : Values (signal) for calibration standards SIGNAL = f(CONC_LEVEL)
+# VAL : Values (signal) for validation standards CONC = f(SIGNALM)
+
+#------------------------------------------------------------------------------#
+# This function calculates the parameters of different calibration curves for 
+# dfRMD (global variable) and fills a CALIB_CURVE table (global variable) with this parameters.
+#------------------------------------------------------------------------------#
+
+compute_calibration_curves <- function() {
+  for (i in levels(as.factor(dfRMD$SERIE))) {
+
+    # MOD LIN
+    
+    linear_model <- lm(formula = SIGNAL ~ CONC_LEVEL, 
+                       data = dfRMD %>% filter(TYPE == "CAL" & SERIE == i))
+    ## INSERT CAL RESIDUES
+    dfRMD <<- setDT(dfRMD)[(SERIE == i) & TYPE == "CAL", 
+                        RES_LIN := (SIGNAL - (coef(linear_model)[2] * CONC_LEVEL + coef(linear_model)[1])) / SIGNAL * 100]
+    
+    ## PREDICT VAL CONC_LEVEL BASED ON SIGNAL
+    dfRMD <<- setDT(dfRMD)[(SERIE == i) & (TYPE == "VAL"), 
+                        LIN := (SIGNAL - coef(linear_model)[1]) / coef(linear_model)[2]]
+    ## STORE CALIBRATION dfRMD
+    calib_curves <<- calib_curves %>% 
+                        add_row(method = "Linear (LM)", 
+                                series = i, 
+                                intercept = coef(linear_model)[1], 
+                                slope = coef(linear_model)[2], 
+                                aic = AIC(linear_model), 
+                                "r2" = summary(linear_model)$r.squared
+                                )
+
+    # MOD LIN 0
+
+    linear_model_0 <- lm(formula = SIGNAL ~ 0 + CONC_LEVEL, 
+                         data = dfRMD %>% filter(TYPE == "CAL" & SERIE == i))
+    ## INSERT CAL RESIDUES
+    dfRMD <<- setDT(dfRMD)[(SERIE == i) & TYPE == "CAL", 
+                        RES_LIN_0 := (SIGNAL - coef(linear_model_0)[1] * CONC_LEVEL) / SIGNAL * 100]
+    ## PREDICT VAL CONC_LEVEL BASED ON SIGNAL
+    dfRMD <<- setDT(dfRMD)[(SERIE == i) & (TYPE == "VAL"), 
+                        LIN_0 := SIGNAL / coef(linear_model_0)[1]]
+    ## STORE CALIBRATION dfRMD
+    calib_curves <<- calib_curves %>% 
+                        add_row(method = "Linear 0 (LM)", 
+                                series = i, 
+                                intercept = 0, 
+                                slope = coef(linear_model_0)[1],
+                                aic = AIC(linear_model_0), 
+                                "r2" = summary(linear_model_0)$r.squared
+                                )
+
+    # MOD LIN weighed 1/X
+
+    linear_model_1X <- lm(formula = SIGNAL ~ CONC_LEVEL, 
+                          data = dfRMD %>% filter(TYPE == "CAL" & SERIE == i), weights = 1 / CONC_LEVEL)
+    ## INSERT CAL RESIDUES
+     dfRMD<<-setDT(dfRMD)[(SERIE == i) & (TYPE == "CAL"), 
+                        RES_LIN_1X := (SIGNAL - (coef(linear_model_1X)[2] * CONC_LEVEL + coef(linear_model_1X)[1])) / SIGNAL * 100]
+    ## PREDICT VAL CONC_LEVEL BASED ON SIGNAL
+     dfRMD <<- setDT(dfRMD)[(SERIE == i) & (TYPE == "VAL"), 
+                        LIN_1X := (SIGNAL - coef(linear_model_1X)[1]) / coef(linear_model_1X)[2]]
+    ## STORE CALIBRATION dfRMD
+    calib_curves <<- calib_curves %>% 
+                        add_row(method = "Linear weighed 1/X (LM)", 
+                                series = i, 
+                                intercept = coef(linear_model_1X)[1], 
+                                slope = coef(linear_model_1X)[2],
+                                aic = AIC(linear_model_1X), 
+                                "r2" = summary(linear_model_1X)$r.squared
+                                )
+
+    # MOD LIN weighed 1/Y
+
+    linear_model_1Y <- lm(formula = SIGNAL ~ CONC_LEVEL, 
+                          data = dfRMD %>% filter(TYPE == "CAL" & SERIE == i), weights = 1 / SIGNAL)
+    ## INSERT CAL RESIDUES
+    dfRMD <<- setDT(dfRMD)[(SERIE == i) & TYPE == "CAL", 
+                        RES_LIN_1Y := (SIGNAL - (coef(linear_model_1Y)[2] * CONC_LEVEL + coef(linear_model_1Y)[1])) / SIGNAL * 100]
+    ## PREDICT VAL CONC_LEVEL BASED ON SIGNAL
+    dfRMD <<- setDT(dfRMD)[(SERIE == i) & (TYPE == "VAL"), 
+                        LIN_1Y := (SIGNAL - coef(linear_model_1Y)[1]) / coef(linear_model_1Y)[2]]
+    calib_curves <<- calib_curves %>% 
+                        add_row(method = "Linear weighed 1/Y (LM)", 
+                                series = i, intercept = coef(linear_model_1Y)[1], 
+                                slope = coef(linear_model_1Y)[2],
+                                aic = AIC(linear_model_1Y), 
+                                "r2" = summary(linear_model_1Y)$r.squared
+                                )
+
+    # MOD LIN 0->max
+
+    linear_model_0max <- lm(formula = SIGNAL ~ 0 + CONC_LEVEL, 
+                            data = dfRMD %>% filter(TYPE == "CAL" & SERIE == i & CONC_LEVEL == tail(levels(as.factor(dfRMD$CONC_LEVEL[dfRMD$TYPE == "CAL"])), n = 1)))
+    ## INSERT CAL RESIDUES
+    dfRMD <<- setDT(dfRMD)[(SERIE == i) & TYPE == "CAL", 
+                        RES_LIN_0MAX := (SIGNAL - (coef(linear_model_0max)[1] * CONC_LEVEL)) / SIGNAL * 100]
+    ## PREDICT VAL CONC_LEVEL BASED ON SIGNAL
+    dfRMD <<- setDT(dfRMD)[(SERIE == i) & (TYPE == "VAL"), 
+                        LIN_0MAX := SIGNAL / coef(linear_model_0max)[1]]
+    ## STORE CALIBRATION dfRMD
+    calib_curves <<- calib_curves %>% 
+                        add_row(method = "Linear 0-max (LM)", 
+                                series = i, 
+                                intercept = 0, 
+                                slope = coef(linear_model_0max)[1],
+                                aic = AIC(linear_model_0max), 
+                                "r2" = summary(linear_model_0max)$r.squared
+                                )
+  }
+}
+
+# Running function compute_calibration_curves()
+# compute_calibration_curves(dfRMD)
+
+
+
+#------------------------------------------------------------------------------#
+# This function plot a curve for each SERIE of the string1 TYPE in dfRMD     
+#------------------------------------------------------------------------------#
+
+print_plot_standards <- function(data, string1) {
+  p1 <- ggplot(data %>% filter(TYPE == string1) %>% select(SERIE, SIGNAL, CONC_LEVEL), 
+               aes(x = CONC_LEVEL, y = SIGNAL, color = as.factor(SERIE))
+               ) +
+            geom_point() +
+            xlab("Concentration levels") +
+            ylab("Signal") +
+            labs(color = "Serie") +
+            scale_color_viridis(discrete = TRUE) +
+            theme_light()
+  return(p1)
+}
+
+# Function testing
+#ggplotly(print_plot_standards(dfRMD, "CAL") + geom_smooth(method = "lm", se = TRUE, color = "black", formula = y ~ x, size = 0.25))
+
+#------------------------------------------------------------------------------#
+# This function returns a structured table (kable) the string1 TYPE in dfRMD         
+# (this is to ease incorporation of raw data values in the report)
+#------------------------------------------------------------------------------#
+
+print_table_rawdata <- function(data, string1) {
+  string2 <- if_else(string1 == "CAL", "Calibration standards raw data", "Validation standards raw data")
+  table <- data %>%
+    filter(TYPE == string1) %>%
+    select(ID, TYPE, SERIE, SIGNAL, CONC_LEVEL) %>%
+    kableExtra::kable(caption = string2) %>%
+    kable_styling("hover")
+  return(table)
+}
+
+# testing
+#print_table_rawdata(dfRMD, "CAL")
+
+
+#------------------------------------------------------------------------------#
+# This function returns a plot (ggplot) of relative bias = f(CONC_LEVEL) for the 
+# calibration standards according to the type of regression chosen.
+# The dfRMD must have been processed with compute_calibration_curves()
+#------------------------------------------------------------------------------#
+
+plot_residues <- function(data) {
+  v_colors <- viridis(5)
+  colors <- c(
+    "Linear" = v_colors[1],
+    "Linear 0" = v_colors[2],
+    "Linear 1/X" = v_colors[3],
+    "Linear 1/Y" = v_colors[4],
+    "Linear 0 max" = v_colors[5]
+  )
+
+  p2 <- ggplot(data = data %>% filter(TYPE == "CAL"), 
+               aes(y = SIGNAL, x = CONC_LEVEL)) +
+            geom_point(data = data %>% filter(TYPE == "CAL"), 
+                       aes(y = RES_LIN, x = CONC_LEVEL, color = "Linear"), 
+                       shape = 1) +
+            stat_summary(fun = mean, 
+                         data = data %>% filter(TYPE == "CAL"), 
+                         aes(y = RES_LIN, x = CONC_LEVEL, color = "Linear"), 
+                         geom = "line") +
+            geom_point(data = data %>% filter(TYPE == "CAL"), 
+                       aes(y = RES_LIN_0, x = CONC_LEVEL, color = "Linear 0"), 
+                       shape = 2) +
+            stat_summary(fun = mean, 
+                         data = data %>% filter(TYPE == "CAL"), 
+                         aes(y = RES_LIN_0, x = CONC_LEVEL, color = "Linear 0"), 
+                         geom = "line") +
+            geom_point(data = data %>% filter(TYPE == "CAL"), 
+                       aes(y = RES_LIN_1X, x = CONC_LEVEL, color = "Linear 1/X"), 
+                       shape = 3) +
+            stat_summary(fun = mean, 
+                         data = data %>% filter(TYPE == "CAL"), 
+                         aes(y = RES_LIN_1X, x = CONC_LEVEL, color = "Linear 1/X"), 
+                         geom = "line") +
+            geom_point(data = data %>% filter(TYPE == "CAL"), 
+                       aes(y = RES_LIN_1Y, x = CONC_LEVEL, color = "Linear 1/Y"), 
+                       shape = 4) +
+            stat_summary(fun = mean, data = data %>% filter(TYPE == "CAL"), 
+                         aes(y = RES_LIN_1Y, x = CONC_LEVEL, color = "Linear 1/Y"), 
+                         geom = "line") +
+            geom_point(data = data %>% filter(TYPE == "CAL"), 
+                       aes(y = RES_LIN_0MAX, x = CONC_LEVEL, color = "Linear 0 max"), 
+                       shape = 5) +
+            stat_summary(fun = mean, 
+                         data = data %>% filter(TYPE == "CAL"), 
+                         aes(y = RES_LIN_0MAX, x = CONC_LEVEL, color = "Linear 0 max"), 
+                         geom = "line") +
+            geom_hline(yintercept = 0, color = "red") +
+            ylab("Relative bias (%)") +
+            xlab("Concentration levels") +
+            labs(color = "Regression types") +
+            scale_color_manual(values = colors) +
+            theme_light()
+  return(p2)
+}
+
+#testing
+#ggplotly(plot_residues(dfRMD))
+
+
+
+
+# ============================ #
+##### VALIDATION STANDARDS #####
+# ============================ #
+
+#------------------------------------------------------------------------------#
+# This function compute for each calibration type biais, intermediate precision 
+# This function calculates for each type of calibration the statistical 
+# parameters associated with the validation standards such as reproducibility, 
+# repeatability and precision interval  
+# The function add element to a list() : listVALID (globale variable) for each 
+# calibration type
+# Change applied to dfRMD (global variable) and listVALID (global variable)
+#------------------------------------------------------------------------------#
+
+# To do -> Trouver les points d'intersections avec les limites (-> Limites de quanti)
+# 
+compute_validation_data <- function() {
+
+  # MEAN of Inverse prediction by levels
+  cols <- c("LIN", "LIN_0", "LIN_1X", "LIN_1Y", "LIN_0MAX")
+  dfRMD <<- dfRMD[, paste(cols, "hat", sep = "_") := lapply(.SD, mean, na.rm = TRUE), 
+               by = CONC_LEVEL, .SDcols = cols][]
+
+  # SELECT ONLY VALIDATION dfRMD
+  DATA_VALID_1 <- dfRMD %>%
+                    select(-contains("RES")) %>%
+                    filter(TYPE == "VAL")
+
+  for (var in what_to_grep) {
+    cVAR <- paste0(var)
+    cVAR2 <- paste0(var, "_hat")
+    VALID <- DATA_VALID_1 %>% select(SERIE, CONC_LEVEL, SIGNAL, all_of(cVAR), all_of(cVAR2))
+    VALID <- setDT(VALID)[, BIAS := get(cVAR2) - CONC_LEVEL, by = CONC_LEVEL][
+      , BIAS_pc := 100 * (BIAS) / CONC_LEVEL,
+      by = CONC_LEVEL
+    ][
+      , RECOV_LIN_pc := 100 * (get(cVAR2)) / CONC_LEVEL,
+      by = CONC_LEVEL
+    ][
+      , ERROR_pc := (get(cVAR) - CONC_LEVEL) / CONC_LEVEL * 100
+    ]
+
+    for (j in levels(as.factor(VALID$CONC_LEVEL))) {
+      VALID <- setDT(VALID)[CONC_LEVEL == j, SQU_DIFF := (get(cVAR) - mean(get(cVAR)))^2, by = SERIE]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, SUM_SQU_DIFF := sum(SQU_DIFF), by = SERIE]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, SUM_SQU_DIFF_RES := sum(SUM_SQU_DIFF) / (nrow(VALID[CONC_LEVEL == j]) / nlevels(as.factor(VALID$SERIE))) ,] # need to divide as repetition of value by row
+      VALID <- setDT(VALID)[CONC_LEVEL == j, VAR_REP := SUM_SQU_DIFF_RES / (nrow(VALID[CONC_LEVEL == j]) - nlevels(as.factor(VALID$SERIE))), ] 
+      # REPEATABILITY SD STDEV_REP
+      VALID <- setDT(VALID)[CONC_LEVEL == j, STDEV_REP := sqrt(VAR_REP), ]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, SQU_DIF_FULL := (get(cVAR) - mean(get(cVAR)))^2]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, SUM_SQU_DIF_FULL := sum(SQU_DIF_FULL)]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, SUM_SQU_DIF_BS := SUM_SQU_DIF_FULL - SUM_SQU_DIFF_RES]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, int_VAR_BS := ((SUM_SQU_DIF_BS / (nlevels(as.factor(VALID$SERIE)) - 1)) - VAR_REP) / (nrow(VALID[CONC_LEVEL == j])/nlevels(as.factor(VALID$SERIE)))] #
+      VALID <- setDT(VALID)[CONC_LEVEL == j, VAR_BS := ifelse(int_VAR_BS > 0, int_VAR_BS, 0)]
+      # BETWEEN SERIES SD STDEV_BS
+      VALID <- setDT(VALID)[CONC_LEVEL == j, STDEV_BS := sqrt(VAR_BS)]
+      # INTERMEDIATER PRECISION SD STDEV_FI
+      VALID <- setDT(VALID)[CONC_LEVEL == j, STDEV_FI := sqrt(VAR_BS + VAR_REP)]
+      # CV
+      VALID <- setDT(VALID)[CONC_LEVEL == j, CV_REP := STDEV_REP / CONC_LEVEL * 100] # MEAN(get(CVAR)) ???
+      VALID <- setDT(VALID)[CONC_LEVEL == j, CV_IP := STDEV_FI / CONC_LEVEL * 100]
+      #
+      VALID <- setDT(VALID)[CONC_LEVEL == j, ratio_VAR := VAR_BS / VAR_REP]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, B2 := (ratio_VAR + 1) / ((nrow(VALID[CONC_LEVEL == j]) / nlevels(as.factor(VALID$SERIE))) * ratio_VAR + 1)]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, CI := sqrt(1 + 1 / (nrow(VALID[CONC_LEVEL == j]) * B2))]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, DDL := (ratio_VAR + 1)^2 / ((ratio_VAR + 1 / (nrow(VALID[CONC_LEVEL == j]) / nlevels(as.factor(VALID$SERIE))))^2 / (nlevels(as.factor(VALID$SERIE)) - 1) + (1 - 1 / (nrow(VALID[CONC_LEVEL == j]) / nlevels(as.factor(VALID$SERIE)))) / nrow(VALID[CONC_LEVEL == j]))]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, KTOL := qt((1 + nBeta) / 2, DDL) * CI] # nBeta global variable
+      VALID <- setDT(VALID)[CONC_LEVEL == j, TVL_ABS := mean(get(cVAR)) - KTOL * STDEV_FI]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, TVH_ABS := mean(get(cVAR)) + KTOL * STDEV_FI]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, TVL_RELATIVE := BIAS_pc - KTOL * CV_IP]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, TVH_RELATIVE := BIAS_pc + KTOL * CV_IP] 
+      VALID <- setDT(VALID)[, pass := ifelse(test = TVL_RELATIVE > -nACC_LIMIT & TVH_RELATIVE < nACC_LIMIT, "PASS", "FAIL")]
+    } 
+    listVALID[[var]] <<- VALID
+  }
+}
+
+#testing
+#compute_validation_data(dfRMD)
+#viewing
+#check = listVALID[["LIN"]]
+
+plot_validation <- function(data, string) {
+  p <- ggplot(data, aes(x = CONC_LEVEL, y = ERROR_pc, color = as.factor(SERIE))) +
+    geom_hline(yintercept = nACC_LIMIT, color = "red", linetype = "dashed") +
+    geom_hline(yintercept = -nACC_LIMIT, color = "red", linetype = "dashed") +
+    geom_hline(yintercept = 0, color = "red", linetype = "dotted") +
+    geom_point() +
+    geom_line(data = data %>% select(-SERIE, -pass) %>% 
+                group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), 
+              aes(x = CONC_LEVEL, y = TVL_RELATIVE), color = "blue") +
+    geom_line(data = data %>% select(-SERIE, -pass) %>% 
+                group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), 
+              aes(x = CONC_LEVEL, y = TVH_RELATIVE), color = "blue") +
+    geom_line(data = data %>% select(-SERIE, -pass) %>% 
+                group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), 
+              aes(x = CONC_LEVEL, y = BIAS_pc), color = "black") +
+    theme_light() +
+    scale_color_viridis(discrete = TRUE) +
+    ggtitle(paste(string)) +
+    xlab(paste("Concentration levels ", sConcUnit)) +
+    ylab("Relative error (%)") +
+    labs(color = "Serie")
+
+  return(p)
+}
+
+#test
+# for (x in 1:length(listVALID)) {
+#   print(ggplotly(plot_validation(as.data.frame(listVALID[[x]]), names(listVALID[x]))))
+# }
+
+summary_validation_abs <- function(data, string) {
+  string2 <- paste(string, "hat", sep = "_")
+  t <- data %>%
+    group_by(CONC_LEVEL) %>%
+    select(-SERIE, -pass) %>%
+    summarize_all(~ mean(.x, na.rm = TRUE)) %>%
+    select(CONC_LEVEL, string2, BIAS, STDEV_REP, VAR_BS, STDEV_FI, TVL_ABS, TVH_ABS) %>%
+    kableExtra::kable(col.names = c(
+      paste("Introduced concentrations ", sConcUnit),
+      paste("Mean calculated concentrations ", sConcUnit),
+      paste("Bias ", sConcUnit),
+      paste("Repeatability SD ", sConcUnit),
+      paste("Between series SD ", sConcUnit),
+      paste("Intermediate precision SD ", sConcUnit),
+      paste("Low limit of tolerance ", sConcUnit),
+      paste("High limit of tolerance ", sConcUnit)
+    ), caption = paste("Trueness and precision estimators and limits (", string, ")")) %>%
+    kable_styling("hover")
+  return(t)
+}
+
+summary_validation_rel <- function(data, string) {
+  string2 <- paste(string, "hat", sep = "_")
+  t <- data %>%
+    group_by(CONC_LEVEL) %>%
+    select(-SERIE, -pass) %>%
+    summarize_all(~ mean(.x, na.rm = TRUE)) %>%
+    select(CONC_LEVEL, string2, BIAS_pc, RECOV_LIN_pc, CV_REP, CV_IP, TVL_RELATIVE, TVH_RELATIVE) %>%
+    mutate(pass = ifelse(TVL_RELATIVE > -nACC_LIMIT & TVH_RELATIVE < nACC_LIMIT, "PASS", "FAIL")) %>%
+    kableExtra::kable(col.names = c(
+      paste("Introduced concentrations ", sConcUnit),
+      paste("Mean calculated concentrations ", sConcUnit),
+      "Bias (%)",
+      "Recovery (%)",
+      "CV repeatability (%)",
+      "CV intermediate precision (%)",
+      "Low limit of tolerance (%)",
+      "High limit of tolerance (%)",
+      "Results"
+    ), caption = paste("Trueness and precision estimators and limits (", string, ")")) %>%
+    kable_styling("hover")
+  return(t)
+}
+
+#test
+# for (x in 1:length(listVALID)) {
+#   print(summary_validation_abs(as.data.frame(listVALID[[x]]), names(listVALID[x])))
+# }
+# 
+# for (x in 1:length(listVALID)) {
+#   print(summary_validation_rel(as.data.frame(listVALID[[x]]), names(listVALID[x])))
+# }
+
+plot_linearity <- function(data, string) {
+  p <- ggplot(data, aes(x = CONC_LEVEL, y = data[, 4])) +
+    geom_abline(slope = 1, color = "red", linetype = "dashed") +
+    geom_point(aes(color = as.factor(SERIE))) +
+    geom_line(data = data %>% select(-SERIE, -pass) %>% group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), aes(x = CONC_LEVEL, y = TVL_ABS), color = "blue") +
+    geom_line(data = data %>% select(-SERIE, -pass) %>% group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), aes(x = CONC_LEVEL, y = TVH_ABS), color = "blue") +
+    geom_smooth(method = "lm", se = FALSE, color = "black", formula = y ~ x, linewidth=0.5) +
+    theme_light() +
+    ggtitle(paste(string)) +
+    scale_color_viridis(discrete = TRUE) +
+    xlab(paste("Concentration levels", sConcUnit)) +
+    ylab(paste("Calculated concentrations ", sConcUnit)) +
+    labs(color = "Serie")
+  return(p)
+}
+
+
+# test
+# for (x in 1:length(listVALID)) {
+#   print(ggplotly(plot_linearity(as.data.frame(listVALID[[x]]), names(listVALID[x]))))
+# }
+
+linear_model_stat <- function(data) {
+  dLIN<-data.frame(data[,2],data[,4])
+  names(dLIN)[1]<-"x"
+  names(dLIN)[2]<-"y"
+  linear_model <- lm(y~x,dLIN)
+  return(linear_model)
+}
+#linear_model_stat(listVALID[["LIN"]])
+
+anova_model_stat <- function(data) {
+  
+  bp <- bptest(linear_model_stat(data))
+  return(bp)
+}
+#anova_model_stat(listVALID[["LIN"]])
 
 ```
 
@@ -56,7 +502,7 @@ ANOVA sur les profils de linarité
 Faire des copier coller
 Faciliter l'interprétation -->
 ```
-# Introduction
+This report was generated by `r paste(sName, sFirstName, sep=" ")`.
 
 When writing a paper using a method validated by this software, we recommend that you cite the software beyond and provide the raw data used as supplementary material for your paper.
 
@@ -66,11 +512,14 @@ To cite this software :
 
 # Methods
 
+* Active substance : `r paste(sSubstance)`
+* Pharmaceutical preparation : `r paste(sPharmPrep)`
+
 ## Statistical analysis
 
 All statistical were produced using the method described in Hubert, P. et al. 2007. Harmonization of strategies for the validation of quantitative analytical procedures. A SFSTP proposal - part III. J Pharm Biomed Anal 45: 82-96. And algorithm were checked using the data providied with the article.
 
-The $\beta$ value used for the calculation of the $\beta$ expectation tolerance interval was set to `r paste(nBETA)` and the acceptance limits was fixed to `r paste(nACC_LIMIT,"%")`.
+The $\beta$ value used for the calculation of the $\beta$ expectation tolerance interval was set to `r paste(nBeta)` and the acceptance limits was fixed to `r paste(nACC_LIMIT,"%")`.
 
 The estimation of the parameters of the calibration curves was obtained by the ordinary least squares method (OLS) with `r paste(R.Version()$version.string)` software [@R-base] and the `r knitr::inline_expr('stats::lm()')` function was used. <!-- This reports was produced using pacakges [@R-data.table;@R-dplyr;@R-ggplot2;@R-ggpmisc;@R-ggpp;@R-kableExtra;@R-plotly;@R-readxl;@R-viridis;@R-viridisLite] -->.
 
@@ -80,29 +529,30 @@ The estimation of the parameters of the calibration curves was obtained by the o
 
 Response functions $signal=f(concentration)$ were analyzed using `stats4::lm()` function in R, using calibration data provided Table \@ref(tab:calibdata) and Figure \@ref(fig:calibdraw)).
 
-```{r, warning = FALSE, echo=FALSE}
+```{r }
+
 calib_curves <- data.frame("method"=character(),
-                            "series"=character(),
-                            "intercept"=numeric(),
-                            "slope"=numeric(),
-                            "aic"=numeric(),
-                            "r2"=numeric())
+                           "series"=character(),
+                           "intercept"=numeric(),
+                           "slope"=numeric(),
+                           "aic"=numeric(),
+                           "r2"=numeric())
 
 diag_calib <- data.frame(resid=numeric())
 
-compute_calibration_curves(dfASSAY)
+compute_calibration_curves()
+
 ```
 
 Analysis were performed using :
 
--   Linear function (Linear)
--   Linear trough 0 function (Linear 0)
--   Linear trough 0 and the highest concentration levels function (Linear 0 - Max)
--   Linear function with weights (1/Y and 1/X) (Linear weighed 1/X and Linear weighed 1/Y)
+-   Linear function (Linear) - Linear trough 0 function (Linear 0)
+    -   Linear trough 0 and the highest concentration levels function (Linear 0 - Max)
+    -   Linear function with weights (1/Y and 1/X) (Linear weighed 1/X and Linear weighed 1/Y)
 
 ```{r calibdraw, echo=FALSE, fig.cap="Calibration data", fig.fullwidth=TRUE}
 
-ggplotly(print_plot_standards(dfASSAY, "CAL"))
+ggplotly(print_plot_standards(dfRMD, "CAL"))
 
 ```
 
@@ -115,9 +565,9 @@ The interactive table \@ref(tab:resultscalib) shows the values obtained with reg
 ```{r resultscalib, echo=FALSE}
 
 calib_curves %>% arrange(method) %>%
-                 kableExtra::kable(col.names = c('Methods', 'Serie', 'Intercept', 'Slope', 'AIC', "R²"), 
-                                   caption = "Results of linear regressions performed") %>%
-                             kable_styling("hover") 
+  kableExtra::kable(col.names = c('Methods', 'Serie', 'Intercept', 'Slope', 'AIC', "R²"), 
+                    caption = "Results of linear regressions performed") %>%
+  kable_styling("hover") 
 
 ```
 
@@ -129,7 +579,7 @@ You can click or double-click on a legend to isolate or display a curve. You can
 
 ```{r calibresidues, echo=FALSE, fig.width=10,fig.height=4,fig.fullwidth=TRUE, fig.cap="Relative bias calculated from regression"}
 
-ggplotly(plot_residues(dfASSAY))
+ggplotly(plot_residues(dfRMD))
 
 ```
 
@@ -137,7 +587,7 @@ ggplotly(plot_residues(dfASSAY))
 
 ```{r, echo=FALSE}
 
-compute_validation_data(dfASSAY)
+compute_validation_data()
 
 ```
 
@@ -165,7 +615,7 @@ Accuracy profile are shown Figure \@ref(fig:aplin). The 𝛽-tolerance interval 
 
 ```{r aplin, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Accuracy profiles  (red dashed line: acceptance limits, blue lines: 𝛽-tolerance intervals)."}
 
-  ggplotly(plot_validation(as.data.frame(listVALID[["LIN"]]), names(listVALID["LIN"])))
+ggplotly(plot_validation(as.data.frame(listVALID[["LIN"]]), names(listVALID["LIN"])))
 
 
 ```
@@ -176,7 +626,7 @@ Linearity profile are shown Figure \@ref(fig:lplin). You should check that the b
 
 ```{r lplin, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Linearity profiles (red dashed line: identity line, black lines: linear regression lines, blue lines: 𝛽-tolerance intervals)."}
 
-  ggplotly(plot_linearity(as.data.frame(listVALID[["LIN"]]), names(listVALID["LIN"])))
+ggplotly(plot_linearity(as.data.frame(listVALID[["LIN"]]), names(listVALID["LIN"])))
 
 ```
 
@@ -355,7 +805,7 @@ Accuracy profile are shown Figure \@ref(fig:aplin). The 𝛽-tolerance interval 
 
 ```{r aplin1y, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Accuracy profiles  (red dashed line: acceptance limits, blue lines: 𝛽-tolerance intervals)."}
 
-  ggplotly(plot_validation(as.data.frame(listVALID[["LIN_1Y"]]), names(listVALID["LIN_1Y"])))
+ggplotly(plot_validation(as.data.frame(listVALID[["LIN_1Y"]]), names(listVALID["LIN_1Y"])))
 
 
 ```
@@ -366,7 +816,7 @@ Linearity profile are shown Figure \@ref(fig:lplin). You should check that the b
 
 ```{r lplin1y, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Linearity profiles (red dashed line: identity line, black lines: linear regression lines, blue lines: 𝛽-tolerance intervals)."}
 
-  ggplotly(plot_linearity(as.data.frame(listVALID[["LIN_1Y"]]), names(listVALID["LIN_1Y"])))
+ggplotly(plot_linearity(as.data.frame(listVALID[["LIN_1Y"]]), names(listVALID["LIN_1Y"])))
 
 ```
 
@@ -417,7 +867,7 @@ Accuracy profile are shown Figure \@ref(fig:aplin). The 𝛽-tolerance interval 
 
 ```{r aplin1x, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Accuracy profiles  (red dashed line: acceptance limits, blue lines: 𝛽-tolerance intervals)."}
 
-  ggplotly(plot_validation(as.data.frame(listVALID[["LIN_1X"]]), names(listVALID["LIN_1X"])))
+ggplotly(plot_validation(as.data.frame(listVALID[["LIN_1X"]]), names(listVALID["LIN_1X"])))
 
 
 ```
@@ -428,7 +878,7 @@ Linearity profile are shown Figure \@ref(fig:lplin). You should check that the b
 
 ```{r lplin1x, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Linearity profiles (red dashed line: identity line, black lines: linear regression lines, blue lines: 𝛽-tolerance intervals)."}
 
-  ggplotly(plot_linearity(as.data.frame(listVALID[["LIN_1X"]]), names(listVALID["LIN_1X"])))
+ggplotly(plot_linearity(as.data.frame(listVALID[["LIN_1X"]]), names(listVALID["LIN_1X"])))
 
 ```
 
@@ -459,62 +909,62 @@ pander(bptest(linear_model_stat(listVALID[["LIN_1X"]])), caption="Result of the 
 
 ```{r calibdata, echo=FALSE}
 
-print_table_rawdata(dfASSAY, "CAL")
+print_table_rawdata(dfRMD, "CAL")
 
 ```
 
 ```{r validdata, echo=FALSE}
 
-print_table_rawdata(dfASSAY, "VAL")
+print_table_rawdata(dfRMD, "VAL")
 
 ```
 
 # Packages
 
-Aphalo, Pedro J. 2022a. Ggpmisc: Miscellaneous Extensions to Ggplot2. https://CRAN.R-project.org/package=ggpmisc.
+Aphalo, Pedro J. 2022a. Ggpmisc: Miscellaneous Extensions to Ggplot2. <https://CRAN.R-project.org/package=ggpmisc>.
 
-Aphalo, Pedro J. 2022b. Ggpp: Grammar Extensions to Ggplot2. https://CRAN.R-project.org/package=ggpp.
+Aphalo, Pedro J. 2022b. Ggpp: Grammar Extensions to Ggplot2. <https://CRAN.R-project.org/package=ggpp>.
 
-Dahl, David B., David Scott, Charles Roosen, Arni Magnusson, and Jonathan Swinton. 2019. Xtable: Export Tables to LaTeX or HTML. http://xtable.r-forge.r-project.org/.
+Dahl, David B., David Scott, Charles Roosen, Arni Magnusson, and Jonathan Swinton. 2019. Xtable: Export Tables to LaTeX or HTML. <http://xtable.r-forge.r-project.org/>.
 
-Daróczi, Gergely, and Roman Tsegelskyi. 2022. Pander: An r Pandoc Writer. https://rapporter.github.io/pander/.
+Daróczi, Gergely, and Roman Tsegelskyi. 2022. Pander: An r Pandoc Writer. <https://rapporter.github.io/pander/>.
 
-Dowle, Matt, and Arun Srinivasan. 2022. Data.table: Extension of ‘Data.frame‘. https://CRAN.R-project.org/package=data.table.
+Dowle, Matt, and Arun Srinivasan. 2022. Data.table: Extension of 'Data.frame'. <https://CRAN.R-project.org/package=data.table>.
 
-Fox, John, and Sanford Weisberg. 2019. An R Companion to Applied Regression. Third. Thousand Oaks CA: Sage. https://socialsciences.mcmaster.ca/jfox/Books/Companion/.
+Fox, John, and Sanford Weisberg. 2019. An R Companion to Applied Regression. Third. Thousand Oaks CA: Sage. <https://socialsciences.mcmaster.ca/jfox/Books/Companion/>.
 
-Fox, John, Sanford Weisberg, and Brad Price. 2022a. Car: Companion to Applied Regression. https://CRAN.R-project.org/package=car.
+Fox, John, Sanford Weisberg, and Brad Price. 2022a. Car: Companion to Applied Regression. <https://CRAN.R-project.org/package=car>.
 
-Fox, John, Sanford Weisberg, and Brad Price. 2022b. carData: Companion to Applied Regression Data Sets. https://CRAN.R-project.org/package=carData.
+Fox, John, Sanford Weisberg, and Brad Price. 2022b. carData: Companion to Applied Regression Data Sets. <https://CRAN.R-project.org/package=carData>.
 
-Garnier, Simon. 2021. Viridis: Colorblind-Friendly Color Maps for r. https://CRAN.R-project.org/package=viridis.
+Garnier, Simon. 2021. Viridis: Colorblind-Friendly Color Maps for r. <https://CRAN.R-project.org/package=viridis>.
 
-Garnier, Simon.. 2022. viridisLite: Colorblind-Friendly Color Maps (Lite Version). https://CRAN.R-project.org/package=viridisLite.
+Garnier, Simon.. 2022. viridisLite: Colorblind-Friendly Color Maps (Lite Version). <https://CRAN.R-project.org/package=viridisLite>.
 
-Hofner, Benjamin. 2021. papeR: A Toolbox for Writing Pretty Papers and Reports. https://CRAN.R-project.org/package=papeR.
+Hofner, Benjamin. 2021. papeR: A Toolbox for Writing Pretty Papers and Reports. <https://CRAN.R-project.org/package=papeR>.
 
-Hofner, Benjamin, and with contributions by many others. 2021. papeR: A Toolbox for Writing Pretty Papers and Reports. https://github.com/hofnerb/papeR.
+Hofner, Benjamin, and with contributions by many others. 2021. papeR: A Toolbox for Writing Pretty Papers and Reports. <https://github.com/hofnerb/papeR>.
 
-Hothorn, Torsten, Achim Zeileis, Richard W. Farebrother, and Clint Cummins. 2022. Lmtest: Testing Linear Regression Models. https://CRAN.R-project.org/package=lmtest.
+Hothorn, Torsten, Achim Zeileis, Richard W. Farebrother, and Clint Cummins. 2022. Lmtest: Testing Linear Regression Models. <https://CRAN.R-project.org/package=lmtest>.
 
-R Core Team. 2022. R: A Language and Environment for Statistical Computing. Vienna, Austria: R Foundation for Statistical Computing. https://www.R-project.org/.
+R Core Team. 2022. R: A Language and Environment for Statistical Computing. Vienna, Austria: R Foundation for Statistical Computing. <https://www.R-project.org/>.
 
-Sievert, Carson. 2020. Interactive Web-Based Data Visualization with r, Plotly, and Shiny. Chapman; Hall/CRC. https://plotly-r.com.
+Sievert, Carson. 2020. Interactive Web-Based Data Visualization with r, Plotly, and Shiny. Chapman; Hall/CRC. <https://plotly-r.com>.
 
-Sievert, Carson, Chris Parmer, Toby Hocking, Scott Chamberlain, Karthik Ram, Marianne Corvellec, and Pedro Despouy. 2022. Plotly: Create Interactive Web Graphics via Plotly.js. https://CRAN.R-project.org/package=plotly.
+Sievert, Carson, Chris Parmer, Toby Hocking, Scott Chamberlain, Karthik Ram, Marianne Corvellec, and Pedro Despouy. 2022. Plotly: Create Interactive Web Graphics via Plotly.js. <https://CRAN.R-project.org/package=plotly>.
 
-Wickham, Hadley. 2016. Ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York. https://ggplot2.tidyverse.org.
+Wickham, Hadley. 2016. Ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York. <https://ggplot2.tidyverse.org>.
 
-Wickham, Hadley, and Jennifer Bryan. 2022. Readxl: Read Excel Files. https://CRAN.R-project.org/package=readxl.
+Wickham, Hadley, and Jennifer Bryan. 2022. Readxl: Read Excel Files. <https://CRAN.R-project.org/package=readxl>.
 
-Wickham, Hadley, Winston Chang, Lionel Henry, Thomas Lin Pedersen, Kohske Takahashi, Claus Wilke, Kara Woo, Hiroaki Yutani, and Dewey Dunnington. 2022. Ggplot2: Create Elegant Data Visualisations Using the Grammar of Graphics. https://CRAN.R-project.org/package=ggplot2.
+Wickham, Hadley, Winston Chang, Lionel Henry, Thomas Lin Pedersen, Kohske Takahashi, Claus Wilke, Kara Woo, Hiroaki Yutani, and Dewey Dunnington. 2022. Ggplot2: Create Elegant Data Visualisations Using the Grammar of Graphics. <https://CRAN.R-project.org/package=ggplot2>.
 
-Wickham, Hadley, Romain François, Lionel Henry, and Kirill Müller. 2022. Dplyr: A Grammar of Data Manipulation. https://CRAN.R-project.org/package=dplyr.
+Wickham, Hadley, Romain François, Lionel Henry, and Kirill Müller. 2022. Dplyr: A Grammar of Data Manipulation. <https://CRAN.R-project.org/package=dplyr>.
 
-Zeileis, Achim, and Gabor Grothendieck. 2005. “Zoo: S3 Infrastructure for Regular and Irregular Time Series.” Journal of Statistical Software 14 (6): 1–27. https://doi.org/10.18637/jss.v014.i06.
+Zeileis, Achim, and Gabor Grothendieck. 2005. "Zoo: S3 Infrastructure for Regular and Irregular Time Series." Journal of Statistical Software 14 (6): 1--27. <https://doi.org/10.18637/jss.v014.i06>.
 
-Zeileis, Achim, Gabor Grothendieck, and Jeffrey A. Ryan. 2022. Zoo: S3 Infrastructure for Regular and Irregular Time Series (z’s Ordered Observations). https://zoo.R-Forge.R-project.org/.
+Zeileis, Achim, Gabor Grothendieck, and Jeffrey A. Ryan. 2022. Zoo: S3 Infrastructure for Regular and Irregular Time Series (z's Ordered Observations). <https://zoo.R-Forge.R-project.org/>.
 
-Zeileis, Achim, and Torsten Hothorn. 2002. “Diagnostic Checking in Regression Relationships.” R News 2 (3): 7–10. https://CRAN.R-project.org/doc/Rnews/.
+Zeileis, Achim, and Torsten Hothorn. 2002. "Diagnostic Checking in Regression Relationships." R News 2 (3): 7--10. <https://CRAN.R-project.org/doc/Rnews/>.
 
-Zhu, Hao. 2021. kableExtra: Construct Complex Table with Kable and Pipe Syntax. https://CRAN.R-project.org/package=kableExtra.
+Zhu, Hao. 2021. kableExtra: Construct Complex Table with Kable and Pipe Syntax. <https://CRAN.R-project.org/package=kableExtra>.

@@ -1,30 +1,6 @@
-#------------------------------------------------------------------------------#
-# Common / global variables
-#------------------------------------------------------------------------------#
 
-calib_curves <- data.frame(
-  "method" = character(),
-  "series" = character(),
-  "intercept" = numeric(),
-  "slope" = numeric(),
-  "aic" = numeric(),
-  "r2" = numeric()
-)
 
-diag_calib <- data.frame(resid = numeric())
 
-what_to_grep <- c("LIN", "LIN_0", "LIN_1X", "LIN_1Y", "LIN_0MAX")
-
-listVALID <- list()
-
-dfTYPE <- data.frame(
-  "ID" = character(),
-  "TYPE" = character(),
-  "SERIE" = character(),
-  "LEVEL" = numeric(),
-  "REPLICATE" = numeric(),
-  "CONC_LEVEL"=numeric(),
-  "SIGNAL" = numeric())
 
 #------------------------------------------------------------------------------#
 # Function to generate the template file XLS
@@ -93,6 +69,15 @@ generate_template <- function(nSERIE, nCAL_LEVEL, nCAL_REP, nVAL_LEVEL, nVAL_REP
 # Function to check upload (same column name, same column type only)
 #------------------------------------------------------------------------------#
 
+dfTYPE <- data.frame(
+  "ID" = character(),
+  "TYPE" = character(),
+  "SERIE" = character(),
+  "LEVEL" = numeric(),
+  "REPLICATE" = numeric(),
+  "CONC_LEVEL"=numeric(),
+  "SIGNAL" = numeric())
+
 check_upload <- function(dfUPLOAD){
   if(isFALSE(janitor::compare_df_cols_same(dfTYPE,dfUPLOAD, bind_method = "rbind"))){
     return(FALSE)
@@ -102,3 +87,6 @@ check_upload <- function(dfUPLOAD){
     return(TRUE)
   }
 }
+
+
+
