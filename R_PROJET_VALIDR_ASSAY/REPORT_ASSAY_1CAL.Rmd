@@ -1,0 +1,743 @@
+---
+output: 
+  bookdown::html_document2:
+    fig_caption: yes
+    theme: spacelab
+    toc: yes
+    toc_depth: 2
+params:
+  dfASSAY : NULL
+  nBeta : 0.8
+  nACC_LIMIT : 0.1
+  name : "default" 
+  firstname : "default"
+  substance : "default"
+  pharmprep : "default"
+  concunit : "default"
+---
+
+---
+title: "Validation report of the method for the determination of `r paste(params$substance)` in `r paste(params$pharmprep)`"
+author: "`r paste(params$name, params$firstname, sep=" ")`"
+date: "`r Sys.Date()`"
+---
+
+```{r setup, warning=FALSE, message=FALSE, echo=FALSE}
+
+
+knitr::opts_chunk$set(echo = FALSE)
+
+require(dplyr) 
+require(data.table)
+require(ggplot2)
+require(kableExtra)
+require(plotly)
+require(viridis)
+require(ggpmisc)
+require(readxl)
+require(papeR)
+require(lmtest)
+require(pander)
+
+calib_curves <- data.frame(
+  "method" = character(),
+  "series" = character(),
+  "intercept" = numeric(),
+  "slope" = numeric(),
+  "aic" = numeric(),
+  "r2" = numeric()
+)
+
+diag_calib <- data.frame(resid = numeric())
+what_to_grep <- c("LIN_0")
+listVALID <- list()
+
+dfRMD <- params$dfASSAY
+#dfRMD <- read_excel("data_valid2.xlsx") #for RMD debug
+
+nBeta <- as.double(params$nBeta)
+nACC_LIMIT <- as.double(params$nACC_LIMIT)*100
+sName <- params$name
+sFirstName <- params$firstname
+sSubstance <- params$substance
+sPharmPrep <- params$pharmprep
+sConcUnit  <- params$concunit
+
+
+# Function were placed directly in RMarkdown files
+
+# =========================== #
+##### CALIBRATION CURVES ######
+# =========================== #
+
+# CAL : Values (signal) for calibration standards SIGNAL = f(CONC_LEVEL)
+# VAL : Values (signal) for validation standards CONC = f(SIGNALM)
+
+#------------------------------------------------------------------------------#
+# This function calculates the parameters of different calibration curves for 
+# dfRMD (global variable) and fills a CALIB_CURVE table (global variable) with this parameters.
+#------------------------------------------------------------------------------#
+
+compute_calibration_curves <- function() {
+  for (i in levels(as.factor(dfRMD$SERIE))) {
+
+
+    # MOD LIN 0
+
+    linear_model_0 <- lm(formula = SIGNAL ~ 0 + CONC_LEVEL, 
+                         data = dfRMD %>% filter(TYPE == "CAL" & SERIE == i))
+    ## INSERT CAL RESIDUES
+    dfRMD <<- setDT(dfRMD)[(SERIE == i) & TYPE == "CAL", 
+                        RES_LIN_0 := (SIGNAL - coef(linear_model_0)[1] * CONC_LEVEL) / SIGNAL * 100]
+    ## PREDICT VAL CONC_LEVEL BASED ON SIGNAL
+    dfRMD <<- setDT(dfRMD)[(SERIE == i) & (TYPE == "VAL"), 
+                        LIN_0 := SIGNAL / coef(linear_model_0)[1]]
+    ## STORE CALIBRATION dfRMD
+    calib_curves <<- calib_curves %>% 
+                        add_row(method = "Linear 0 (LM)", 
+                                series = i, 
+                                intercept = 0, 
+                                slope = coef(linear_model_0)[1],
+                                aic = AIC(linear_model_0), 
+                                "r2" = summary(linear_model_0)$r.squared
+                                )
+
+
+
+
+
+
+  }
+}
+
+#data_alignement <- function(){}
+
+# Running function compute_calibration_curves()
+# compute_calibration_curves(dfRMD)
+
+
+
+#------------------------------------------------------------------------------#
+# This function plot a curve for each SERIE of the string1 TYPE in dfRMD     
+#------------------------------------------------------------------------------#
+
+print_plot_standards <- function(data, string1) {
+  p1 <- ggplot(data %>% filter(TYPE == string1) %>% select(SERIE, SIGNAL, CONC_LEVEL), 
+               aes(x = CONC_LEVEL, y = SIGNAL, color = as.factor(SERIE))
+               ) +
+            geom_point() +
+            xlab("Concentration levels") +
+            ylab("Signal") +
+            labs(color = "Serie") +
+            scale_color_viridis(discrete = TRUE) +
+            theme_light()
+  return(p1)
+}
+
+# Function testing
+#ggplotly(print_plot_standards(dfRMD, "CAL") + geom_smooth(method = "lm", se = TRUE, color = "black", formula = y ~ x, size = 0.25))
+
+#------------------------------------------------------------------------------#
+# This function returns a structured table (kable) the string1 TYPE in dfRMD         
+# (this is to ease incorporation of raw data values in the report)
+#------------------------------------------------------------------------------#
+
+print_table_rawdata <- function(data, string1) {
+  string2 <- if_else(string1 == "CAL", "Calibration standards raw data", "Validation standards raw data")
+  table <- data %>%
+    filter(TYPE == string1) %>%
+    select(ID, TYPE, SERIE, SIGNAL, CONC_LEVEL) %>%
+    kableExtra::kable(caption = string2) %>%
+    kable_styling("hover")
+  return(table)
+}
+
+# testing
+#print_table_rawdata(dfRMD, "CAL")
+
+
+#------------------------------------------------------------------------------#
+# This function returns a plot (ggplot) of relative bias = f(CONC_LEVEL) for the 
+# calibration standards according to the type of regression chosen.
+# The dfRMD must have been processed with compute_calibration_curves()
+#------------------------------------------------------------------------------#
+
+plot_residues <- function(data) {
+  v_colors <- viridis(5)
+  colors <- c(
+    "Linear 0" = v_colors[2]
+  )
+
+  p2 <- ggplot(data = data %>% filter(TYPE == "CAL"), 
+               aes(y = SIGNAL, x = CONC_LEVEL)) +
+
+            geom_point(data = data %>% filter(TYPE == "CAL"), 
+                       aes(y = RES_LIN_0, x = CONC_LEVEL, color = "Linear 0"), 
+                       shape = 2) +
+            stat_summary(fun = mean, 
+                         data = data %>% filter(TYPE == "CAL"), 
+                         aes(y = RES_LIN_0, x = CONC_LEVEL, color = "Linear 0"), 
+                         geom = "line") +
+
+            geom_hline(yintercept = 0, color = "red") +
+            ylab("Relative bias (%)") +
+            xlab(paste("Concentration levels ", sConcUnit)) +
+            labs(color = "Regression types") +
+            scale_color_manual(values = colors) +
+            theme_light()
+  return(p2)
+}
+
+#testing
+#ggplotly(plot_residues(dfRMD))
+
+
+
+
+# ============================ #
+##### VALIDATION STANDARDS #####
+# ============================ #
+
+#------------------------------------------------------------------------------#
+# This function compute for each calibration type biais, intermediate precision 
+# This function calculates for each type of calibration the statistical 
+# parameters associated with the validation standards such as reproducibility, 
+# repeatability and precision interval  
+# The function add element to a list() : listVALID (globale variable) for each 
+# calibration type
+# Change applied to dfRMD (global variable) and listVALID (global variable)
+#------------------------------------------------------------------------------#
+
+# To do -> Trouver les points d'intersections avec les limites (-> Limites de quanti)
+# 
+
+compute_validation_data <- function() {
+
+  # MEAN of Inverse prediction by levels
+  cols <- c("LIN_0")
+  dfRMD <<- dfRMD[, paste(cols, "hat", sep = "_") := lapply(.SD, mean, na.rm = TRUE), 
+               by = CONC_LEVEL, .SDcols = cols][]
+
+  # SELECT ONLY VALIDATION dfRMD
+  DATA_VALID_1 <- dfRMD %>%
+                    select(-contains("RES")) %>%
+                    filter(TYPE == "VAL")
+
+  for (var in what_to_grep) {
+    cVAR <- paste0(var)
+    cVAR2 <- paste0(var, "_hat")
+    VALID <- DATA_VALID_1 %>% select(SERIE, CONC_LEVEL, SIGNAL, all_of(cVAR), all_of(cVAR2))
+    VALID <- setDT(VALID)[, BIAS := get(cVAR2) - CONC_LEVEL, by = CONC_LEVEL][
+      , BIAS_pc := 100 * (BIAS) / CONC_LEVEL,
+      by = CONC_LEVEL
+    ][
+      , RECOV_LIN_pc := 100 * (get(cVAR2)) / CONC_LEVEL,
+      by = CONC_LEVEL
+    ][
+      , ERROR_pc := (get(cVAR) - CONC_LEVEL) / CONC_LEVEL * 100
+    ]
+
+    for (j in levels(as.factor(VALID$CONC_LEVEL))) {
+      VALID <- setDT(VALID)[CONC_LEVEL == j, SQU_DIFF := (get(cVAR) - mean(get(cVAR)))^2, by = SERIE]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, SUM_SQU_DIFF := sum(SQU_DIFF), by = SERIE]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, SUM_SQU_DIFF_RES := sum(SUM_SQU_DIFF) / (nrow(VALID[CONC_LEVEL == j]) / nlevels(as.factor(VALID$SERIE))) ,] # need to divide as repetition of value by row
+      VALID <- setDT(VALID)[CONC_LEVEL == j, VAR_REP := SUM_SQU_DIFF_RES / (nrow(VALID[CONC_LEVEL == j]) - nlevels(as.factor(VALID$SERIE))), ] 
+      # REPEATABILITY SD STDEV_REP
+      VALID <- setDT(VALID)[CONC_LEVEL == j, STDEV_REP := sqrt(VAR_REP), ]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, SQU_DIF_FULL := (get(cVAR) - mean(get(cVAR)))^2]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, SUM_SQU_DIF_FULL := sum(SQU_DIF_FULL)]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, SUM_SQU_DIF_BS := SUM_SQU_DIF_FULL - SUM_SQU_DIFF_RES]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, int_VAR_BS := ((SUM_SQU_DIF_BS / (nlevels(as.factor(VALID$SERIE)) - 1)) - VAR_REP) / (nrow(VALID[CONC_LEVEL == j])/nlevels(as.factor(VALID$SERIE)))] #
+      VALID <- setDT(VALID)[CONC_LEVEL == j, VAR_BS := ifelse(int_VAR_BS > 0, int_VAR_BS, 0)]
+      # BETWEEN SERIES SD STDEV_BS
+      VALID <- setDT(VALID)[CONC_LEVEL == j, STDEV_BS := sqrt(VAR_BS)]
+      # INTERMEDIATER PRECISION SD STDEV_FI
+      VALID <- setDT(VALID)[CONC_LEVEL == j, STDEV_FI := sqrt(VAR_BS + VAR_REP)]
+      # CV
+      VALID <- setDT(VALID)[CONC_LEVEL == j, CV_REP := STDEV_REP / CONC_LEVEL * 100] # MEAN(get(CVAR)) ???
+      VALID <- setDT(VALID)[CONC_LEVEL == j, CV_IP := STDEV_FI / CONC_LEVEL * 100]
+      #
+      VALID <- setDT(VALID)[CONC_LEVEL == j, ratio_VAR := VAR_BS / VAR_REP]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, B2 := (ratio_VAR + 1) / ((nrow(VALID[CONC_LEVEL == j]) / nlevels(as.factor(VALID$SERIE))) * ratio_VAR + 1)]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, CI := sqrt(1 + 1 / (nrow(VALID[CONC_LEVEL == j]) * B2))]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, DDL := (ratio_VAR + 1)^2 / ((ratio_VAR + 1 / (nrow(VALID[CONC_LEVEL == j]) / nlevels(as.factor(VALID$SERIE))))^2 / (nlevels(as.factor(VALID$SERIE)) - 1) + (1 - 1 / (nrow(VALID[CONC_LEVEL == j]) / nlevels(as.factor(VALID$SERIE)))) / nrow(VALID[CONC_LEVEL == j]))]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, KTOL := qt((1 + nBeta) / 2, DDL) * CI] # nBeta global variable
+      VALID <- setDT(VALID)[CONC_LEVEL == j, TVL_ABS := mean(get(cVAR)) - KTOL * STDEV_FI]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, TVH_ABS := mean(get(cVAR)) + KTOL * STDEV_FI]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, TVL_RELATIVE := BIAS_pc - KTOL * CV_IP]
+      VALID <- setDT(VALID)[CONC_LEVEL == j, TVH_RELATIVE := BIAS_pc + KTOL * CV_IP] 
+      VALID <- setDT(VALID)[, pass := ifelse(test = TVL_RELATIVE > -nACC_LIMIT & TVH_RELATIVE < nACC_LIMIT, "PASS", "FAIL")]
+    } 
+    listVALID[[var]] <<- VALID
+  }
+}
+
+#testing
+#compute_validation_data(dfRMD)
+#viewing
+#check = listVALID[["LIN"]]
+find_x <- function(y, x1, y1, x2, y2) {
+  m <- (y2 - y1) / (x2 - x1)
+  b <- y1 - m * x1
+  x <- (y - b) / m
+  if((x>x1 && x<x2)){return(x)}
+}
+
+find_loq <- function(data){
+      temp <- data %>% group_by(CONC_LEVEL) %>%
+      select(-SERIE, -pass) %>%
+      summarize_all(~ mean(.x, na.rm = TRUE)) %>%
+      select(CONC_LEVEL, TVL_RELATIVE, TVH_RELATIVE)
+      dfLOQ <- data.frame(X=numeric(),Y=numeric())
+      for(i in 1:(nrow(temp)-1)){
+          if(class(invisible(find_x(y = -nACC_LIMIT, x1 = temp$CONC_LEVEL[i], 
+                                            y1 = temp$TVL_RELATIVE[i],x2 = temp$CONC_LEVEL[i+1], y2 = temp$TVL_RELATIVE[i+1])))!= "NULL"){
+            dfLOQ <- dfLOQ %>% add_row(
+              tibble(X=find_x(y = -nACC_LIMIT, x1 = temp$CONC_LEVEL[i], y1 = temp$TVL_RELATIVE[i],
+                                 x2 = temp$CONC_LEVEL[i+1], y2 = temp$TVL_RELATIVE[i+1]),
+              Y=-nACC_LIMIT))
+          }
+      }
+      for(i in 1:(nrow(temp)-1)){
+        if(class(invisible(find_x(y = nACC_LIMIT, x1 = temp$CONC_LEVEL[i], 
+                                  y1 = temp$TVH_RELATIVE[i],x2 = temp$CONC_LEVEL[i+1], y2 = temp$TVH_RELATIVE[i+1])))!= "NULL"){
+          dfLOQ <- dfLOQ %>% add_row(
+            tibble(X=find_x(y = nACC_LIMIT, x1 = temp$CONC_LEVEL[i], y1 = temp$TVH_RELATIVE[i],x2 = temp$CONC_LEVEL[i+1], y2 = temp$TVH_RELATIVE[i+1]),
+                   Y=nACC_LIMIT))
+        }
+      }
+      return(dfLOQ)
+}
+
+
+plot_validation <- function(data, string) {
+  dfLOQ<-find_loq(data)
+  p <- ggplot(data, aes(x = CONC_LEVEL, y = ERROR_pc, color = as.factor(SERIE))) +
+    geom_hline(yintercept = nACC_LIMIT, color = "red", linetype = "dashed") +
+    geom_hline(yintercept = -nACC_LIMIT, color = "red", linetype = "dashed") +
+    geom_hline(yintercept = 0, color = "red", linetype = "dotted") +
+    geom_point() +
+    geom_line(data = data %>% select(-SERIE, -pass) %>% 
+                group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), 
+              aes(x = CONC_LEVEL, y = TVL_RELATIVE), color = "blue") +
+    geom_line(data = data %>% select(-SERIE, -pass) %>% 
+                group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), 
+              aes(x = CONC_LEVEL, y = TVH_RELATIVE), color = "blue") +
+    geom_line(data = data %>% select(-SERIE, -pass) %>% 
+                group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), 
+              aes(x = CONC_LEVEL, y = BIAS_pc), color = "black") +
+    theme_light() +
+    scale_color_viridis(discrete = TRUE) +
+    ggtitle(paste(string)) +
+    xlab(paste("Concentration levels ", sConcUnit)) +
+    ylab("Relative error (%)") +
+    labs(color = "Serie")
+  if(nrow(dfLOQ>1)){
+    p <- p + geom_point(data=dfLOQ, aes(x=X, y=Y), color="red", shape=8, size=2)
+  }
+  return(p)
+}
+
+#test
+# for (x in 1:length(listVALID)) {
+#   print(ggplotly(plot_validation(as.data.frame(listVALID[[x]]), names(listVALID[x]))))
+# }
+
+summary_validation_abs <- function(data, string) {
+  string2 <- paste(string, "hat", sep = "_")
+  t <- data %>%
+    group_by(CONC_LEVEL) %>%
+    select(-SERIE, -pass) %>%
+    summarize_all(~ mean(.x, na.rm = TRUE)) %>%
+    select(CONC_LEVEL, string2, BIAS, STDEV_REP, VAR_BS, STDEV_FI, TVL_ABS, TVH_ABS) %>%
+    kableExtra::kable(col.names = c(
+      paste("Introduced concentrations ", sConcUnit),
+      paste("Mean calculated concentrations ", sConcUnit),
+      paste("Bias ", sConcUnit),
+      paste("Repeatability SD ", sConcUnit),
+      paste("Between series SD ", sConcUnit),
+      paste("Intermediate precision SD ", sConcUnit),
+      paste("Low limit of tolerance ", sConcUnit),
+      paste("High limit of tolerance ", sConcUnit)
+    ), caption = paste("Trueness and precision estimators and limits (", string, ")")) %>%
+    kable_styling("hover")
+  return(t)
+}
+
+summary_validation_rel <- function(data, string) {
+  string2 <- paste(string, "hat", sep = "_")
+  t <- data %>%
+    group_by(CONC_LEVEL) %>%
+    select(-SERIE, -pass) %>%
+    summarize_all(~ mean(.x, na.rm = TRUE)) %>%
+    select(CONC_LEVEL, string2, BIAS_pc, RECOV_LIN_pc, CV_REP, CV_IP, TVL_RELATIVE, TVH_RELATIVE) %>%
+    mutate(pass = ifelse(TVL_RELATIVE > -nACC_LIMIT & TVH_RELATIVE < nACC_LIMIT, "PASS", "FAIL")) %>%
+    kableExtra::kable(col.names = c(
+      paste("Introduced concentrations ", sConcUnit),
+      paste("Mean calculated concentrations ", sConcUnit),
+      "Bias (%)",
+      "Recovery (%)",
+      "CV repeatability (%)",
+      "CV intermediate precision (%)",
+      "Low limit of tolerance (%)",
+      "High limit of tolerance (%)",
+      "Results"
+    ), caption = paste("Trueness and precision estimators and limits (", string, ")")) %>%
+    kable_styling("hover")
+  return(t)
+}
+
+#test
+# for (x in 1:length(listVALID)) {
+#   print(summary_validation_abs(as.data.frame(listVALID[[x]]), names(listVALID[x])))
+# }
+# 
+# for (x in 1:length(listVALID)) {
+#   print(summary_validation_rel(as.data.frame(listVALID[[x]]), names(listVALID[x])))
+# }
+
+plot_linearity <- function(data, string) {
+  p <- ggplot(data, aes(x = CONC_LEVEL, y = data[, 4])) +
+    geom_abline(slope = 1, color = "red", linetype = "dashed") +
+    geom_point(aes(color = as.factor(SERIE))) +
+    geom_line(data = data %>% select(-SERIE, -pass) %>% group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), aes(x = CONC_LEVEL, y = TVL_ABS), color = "blue") +
+    geom_line(data = data %>% select(-SERIE, -pass) %>% group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), aes(x = CONC_LEVEL, y = TVH_ABS), color = "blue") +
+    geom_smooth(method = "lm", se = FALSE, color = "black", formula = y ~ x, linewidth=0.5) +
+    theme_light() +
+    ggtitle(paste(string)) +
+    scale_color_viridis(discrete = TRUE) +
+    xlab(paste("Concentration levels", sConcUnit)) +
+    ylab(paste("Calculated concentrations ", sConcUnit)) +
+    labs(color = "Serie")
+  return(p)
+}
+
+
+# test
+# for (x in 1:length(listVALID)) {
+#   print(ggplotly(plot_linearity(as.data.frame(listVALID[[x]]), names(listVALID[x]))))
+# }
+
+linear_model_stat <- function(data) {
+  dLIN<-data.frame(data[,2],data[,4])
+  names(dLIN)[1]<-"x"
+  names(dLIN)[2]<-"y"
+  linear_model <- lm(y~x,dLIN)
+  return(linear_model)
+}
+#linear_model_stat(listVALID[["LIN"]])
+
+anova_model_stat <- function(data) {
+  
+  bp <- bptest(linear_model_stat(data))
+  return(bp)
+}
+#anova_model_stat(listVALID[["LIN"]])
+
+```
+
+```{=html}
+<!-- Reste à mettre les méthodes et calculs
+ANOVA sur les profils de linarité
+Faire des copier coller
+Faciliter l'interprétation
+
+Register DOI to ZENODO https://about.zenodo.org/principles/ 
+-->
+```
+This HTML report was generated by: `r paste(sName, sFirstName, sep=" ")` (user defined) using ValidR online Shiny application with `r paste(R.Version()$version.string)` statistical software. The quality of the report rendering (e.g. math symbols) may depend on the browser and requires javascript to be enabled.
+
+All figures are [interactive](https://plotly-r.com/control-modebar.html) and can be filtered, zoomed, downloaded (publication quality [svg format](https://fr.wikipedia.org/wiki/Scalable_Vector_Graphics)) using menu bar on the upper right corner or the legend. Hovering over lines and points on the graph will display available informations.
+
+**Incorrect use of the application or templates can lead to errors.**
+
+**The results are provided "as is" and should be reviewed and interpreted. Neither the designers nor the providers of the application can be held responsible for any errors or adverse consequences resulting from the use of the app or this report.**
+
+Uploaded data were reported at the end within the section \@ref(raw-data).
+
+# Methods
+
+Validation of assay methods is based on the use of calibration and validation standards made by accurately weighing predetermined quantities of analytes as required. The experiments are generally carried out on multiple series (usually carried out on different days) on multiple concentration levels with multiple replicates per level and per series.
+
+In order to complete this report, it is recommended to annex the exact drug formula with the reference of each of the raw materials used as well as a complete description of pre-analytical and analytical methods used.
+
+## Calibration curves
+
+The estimation of the parameters of the calibration curves were obtained from the ordinary least squares method (OLS) using the `r knitr::inline_expr('stats::lm()')` function.
+
+When possible various linear regressions were tested:
+
+-   Linear trough 0 function (Linear 0)
+
+## Estimation of trueness and precision
+
+### Models
+
+Considering $i \in [1;p]$ (series index), $j \in [1,m]$ (concentration index), $k\in [1;n]$ (repetition index) and $x_{i,j,k, calc}$ the $k$th back calculated concentration of the $i$ series $j$ level (using calibration standards) :
+
+$$
+x_{i,j,k, calc} = \mu_j + \alpha_{i,j} + \epsilon_{i,j,k}
+$$
+
+With : $\begin{cases} \mu_j &: \text{the back calculated mean of the $j$ level} \\ \alpha_{i,j} &: \text{at $j$ level, the difference between the $i$th series average and the $\mu_j$}\\ \epsilon_{i,j,k} &: \text{the experimental error} \end{cases}$
+
+$\begin{cases}\alpha_{i,j} &\sim \mathcal{N}(0,\sigma^2_{B,j}) \; \text{with $\sigma^2_{B,j}$ representing the interseries variances} \\ \epsilon_{i,j,k} &\sim \mathcal{N}(0, \sigma^2_{W,j}) \; \text{with $\sigma^2_{W,j}$ representing the intraseries variances}\end{cases}$
+
+### Trueness
+
+Trueness expresses the closeness of agreement between the mean value obtained from a series of test results and an accepted reference value. The trueness gives an indication of the systemic errors. It was calculated at each concentration level by calculating the difference between the introduced concentrations (arithmetic) mean $\overline{x}_j$ and the calculated concentrations mean $\hat{\mu}_j$.
+
+The bias (for j th level) was expressed as: $\text{Bias}_j =\hat{\mu}_j-\overline{x}_j$
+
+And the relative bias as: $\text{Bias(%)}_j = \frac{\hat{\mu}_j-\overline{x}_j}{\overline{x}_j}\times 100$
+
+The recovery (for j th level) was expressed as : $\text{Recovery(%)}_j = \frac{\hat{\mu}_j}{\overline{x}_j}\times 100$
+
+### Fidelity & intermediate precision
+
+Fidelity expresses the closeness of agreement between a series of measurements from multiple takes of the same homogeneous sample, under prescribed conditions. It provides information on random errors and is assessed at two levels, repeatability and intermediate precision.
+
+Intra and interseries variance could be estimated at every $j$ level using the restricted maximum likelihood method:
+
+$\begin{align} \hat{\mu}_j &= \frac{1}{\sum^p_{i=1}n_{i,j}}\cdot\sum^p_{i=1}\sum^{n_{i,j}}_{k=1} x_{i,j,k, calc} \\ \text{MSM}_j &= \frac{1}{p-1} \cdot \sum^p_{i=1}n_{i,j}\cdot \left(x_{i,j, calc}-\overline{x}_{i,j, calc}\right)^2 \\ \text{MSE}_j &=\frac{1}{\sum^p_{i=1}n_{i,j}-p}\cdot\sum^p_{i=1}\sum^{n_{i,j}}_{k=1} \left(x_{i,j, calc}-\overline{x}_{i,j, calc}\right)^2 \end{align}$
+
+$\text{if MSE$_j$ < MSM$_j$} \begin{cases} \hat{\sigma}^2_{W,j} &=\text{MSE}_j \\ \hat{\sigma}^2_{B,j} &= \frac{\text{MSM}_j-\text{MSE}_j}{n} \end{cases}$
+
+$\text{else} \begin{cases} \hat{\sigma}^2_{W,j} &=\frac{1}{pn - 1}\cdot\sum^p_{i=1}\sum^{k}_{j=1} \left(x_{i,j,k calc}-\overline{x}_{j, calc}\right)^2 \\ \hat{\sigma}^2_{B,j} &= 0 \end{cases}$
+
+Intermediate precision was then calculated: $\hat{\sigma}^2_{IP,j} = \hat{\sigma}^2_{W,j} + \hat{\sigma}^2_{B,j}$
+
+Each corresponding coefficient of variation was determined as: $\text{CV(%)} = \frac{\sigma_j}{\hat{\mu}_j}$
+
+### Tolerance interval and accuracy profiles
+
+The tolerance interval is a statistical interval within which, with some confidence level, a specified proportion ($\beta$) of a sampled population falls. The construction of the tolerance intervals using standard solutions therefore makes it possible to predict with a some confidence levels where a proportion of the dosages will falls.
+
+The tolerance interval has been computed, at each concentration levels using validation standards as follows:
+
+-   $\hat{\mu}_j \pm \mathcal{Q}t(\upsilon,\frac{1 + \beta}{2})\cdot\sqrt{1 + \frac{1}{pn\cdot B^2_j}}\cdot\hat\sigma_{IP,j}$
+
+-   $\text{Bias(%)} \pm \mathcal{Q}_t(\upsilon,\frac{1 + \beta}{2}) \cdot \sqrt{1 + \frac{1}{pn\cdot B^2_j}} \cdot \hat{ \text{CV}}_{IP,j}$
+
+$with \begin{cases}\begin{align} R_j &= \frac{\sigma^2_{B,j}}{\sigma^2_{W,j}} \\ B_j &= \sqrt{\frac{R_j +1}{n\cdot R_j + 1}} \\ \upsilon &= \frac{(R+1)^2}{\frac{(R + (1/n))^2}{p - 1} + \frac{(1 - 1/n)}{pn} } \end{align}\end{cases}$
+
+$\mathcal{Q}_t(\upsilon,\frac{1 + \beta}{2})$ corresponded to the $\beta$ quantile of the Student $t$ distribution with $\upsilon$ degrees of freedom.
+
+-   **The $\beta$ value used for the calculation of the $\beta$-expectation tolerance interval was set to: `r paste(nBeta)` (user defined).**
+
+The accuracy profiles ([─]{style="color:blue"}) were plotted joining the tolerance intervals obtained for each of the levels tested. A method is validated over the full range of measurements, when the accuracy profile ([─]{style="color:blue"}) is fully included between the upper and lower bound of the acceptability limit $[-\lambda;+\lambda]$ ([┄]{style="color:red"}) set a priori. The method can only be used over the concentration range for which the accuracy profile is entirely within the acceptability limit $[-\lambda;+\lambda]$.
+
+-   **The acceptability value used was set to: `r paste(nACC_LIMIT,"%")` (user defined).**
+
+### Determination of quantification limits.
+
+When the accuracy profile ([─]{style="color:blue"}) is not fully included within the acceptability limit $[-\lambda;+\lambda]$ ( [┄]{style="color:red"}), a limit of quantification can be determined at the intersection of the accuracy profile with the upper ($+\lambda$) or lower ($-\lambda$) acceptability limit. This can happen at low or high concentrations and can produce lower or higher LOQs respectively.
+
+The coordinates of the intersections between the accuracy profiles and the acceptability limits were calculated and plotted on the tolerance profiles ([✴]{style="color:red"})
+
+-   *The lower LOQ* is the lowest amount of analyte in a sample which can be quantitatively determined with suitable precision and accuracy. It should be determined at lower levels using the last intersection point between accuracy profile and acceptance limits, before accuracy profile become fully included in acceptance limits. It's the first level tested if accuracy profile is fully inside acceptance limits at this level.
+
+-   *The upper LOQ* is the highest amount of analyte in a sample which can be quantitatively determined with suitable precision and accuracy. It should be determined at higher levels using the first intersection point between accuracy profile and acceptance limits, before accuracy profile partly or fully exceeds acceptance limits. It is the last level tested if accuracy profile is fully inside acceptance limits from the lower LOQ to this level.
+
+# Analysis of response function (calibration curves)
+
+## Methods and Data
+
+Response functions $signal=f(concentration)$ were analysed using `stats4::lm()` function in R, using calibration data provided in Table \@ref(tab:calibdata) and Figure \@ref(fig:calibdraw)) (see section \@ref(raw-data)).
+
+```{r }
+calib_curves <- data.frame("method"=character(),
+                           "series"=character(),
+                           "intercept"=numeric(),
+                           "slope"=numeric(),
+                           "aic"=numeric(),
+                           "r2"=numeric())
+
+diag_calib <- data.frame(resid=numeric())
+
+compute_calibration_curves()
+
+```
+
+Analysis was performed using :
+
+-   Linear trough 0 function (Linear 0)
+
+## Response functions obtained
+
+### Regression analysis
+
+The interactive table \@ref(tab:resultscalib) shows the values obtained with regressions :
+
+```{r resultscalib, echo=FALSE}
+
+calib_curves %>% arrange(method) %>%
+  kableExtra::kable(col.names = c('Methods', 'Serie', 'Intercept', 'Slope', 'AIC', "R²"), 
+                    caption = "Results of linear regressions performed") %>%
+  kable_styling("hover") 
+
+```
+
+### Residues for each calibration curve at each level
+
+The residues obtained are shown in the interactive figure \@ref(fig:calibresidues).
+
+```{r calibresidues, echo=FALSE, fig.width=10,fig.height=4,fig.fullwidth=TRUE, fig.cap="Relative bias calculated from regression"}
+
+ggplotly(plot_residues(dfRMD)) %>% config(
+    toImageButtonOptions = list(
+      format = "svg"
+    ))
+
+
+```
+
+# Validation
+
+```{r, echo=FALSE}
+
+compute_validation_data()
+
+```
+
+## Using a linear forced through 0 calibration curve
+
+### Trueness and precision obtained
+
+Trueness and precision are depicted on the table \@ref(tab:iplin0abs) and \@ref(tab:iplin0rel)
+
+```{r iplin0abs, echo=FALSE, warning=FALSE, fig.width=10,fig.height=4,fig.fullwidth=TRUE, fig.cap="Trueness and precision obtained"}
+
+summary_validation_abs(as.data.frame(listVALID[["LIN_0"]]), names(listVALID["LIN_0"]))
+
+```
+
+```{r iplin0rel, echo=FALSE, warning=FALSE, fig.width=10,fig.height=4,fig.fullwidth=TRUE, fig.cap="Trueness and precision obtained"}
+
+summary_validation_rel(as.data.frame(listVALID[["LIN_0"]]), names(listVALID["LIN_0"]))
+
+```
+
+### Accuracy profile
+
+Accuracy profile is shown in Figure \@ref(fig:aplin0). The 𝛽-tolerance interval ([─]{style="color:blue"}) should be entirely within the acceptance limits ([┄]{style="color:red"}). Coordinates of points of intersection between the tolerance interval and the acceptability limit were marked with a red star ([✴]{style="color:red"}) when present.
+
+```{r aplin0, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Accuracy profiles  (red dashed line: acceptance limits, blue lines: 𝛽-tolerance intervals)."}
+
+  ggplotly(plot_validation(as.data.frame(listVALID[["LIN_0"]]), names(listVALID["LIN_0"]))) %>% config(
+    toImageButtonOptions = list(
+      format = "svg"
+    ))
+
+
+```
+
+### Linearity Profile
+
+Linearity profile is shown in Figure \@ref(fig:lplin0). You should check that the black line (linear model) should be superimposed on the red dashed identity line.
+
+```{r lplin0, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Linearity profiles (red dashed line: identity line, black lines: linear regression lines, blue lines: 𝛽-tolerance intervals)."}
+
+  ggplotly(plot_linearity(as.data.frame(listVALID[["LIN_0"]]), names(listVALID["LIN_0"]))) %>% config(
+    toImageButtonOptions = list(
+      format = "svg"
+    ))
+
+```
+
+### Linear regression
+
+`r if(summary(linear_model_stat(listVALID[["LIN_0"]]))$coefficients[1,4]<0.05){ "The p-value for the intercept is < 0.05 which is in favor of a significant value (FAIL)"}else{ "The p-value for the intercept is > 0.05 which is in favor of a non-significant value (PASS)"}`
+
+`r if(summary(linear_model_stat(listVALID[["LIN_0"]]))$coefficients[2,4]<0.05){ "The p-value for the slope is < 0.05 which is in favor of a significant value (PASS)"}else{ "The p-value for the slope is > 0.05 which is in favor of a non-significant value (FAIL)"}`
+
+```{r}
+
+kbl(prettify(summary(linear_model_stat(listVALID[["LIN_0"]]))), 
+    caption = 'Results of the linear regression.') %>%
+  kable_styling(full_width = F, position = "left") 
+```
+
+### Studentized Breusch-Pagan test for heteroskedasticity
+
+`r if(bptest(linear_model_stat(listVALID[["LIN_0"]]))$p.value<0.05){"The p-value < 0.05 which is in favor of heterosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are non-constant (this should be investigated)"}else{"The p-value > O.05 which is in favor of homosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are constant (expected result)"}`
+
+```{r }
+
+pander(bptest(linear_model_stat(listVALID[["LIN_0"]])), caption="Result of the studentized Breusch-Pagan test")
+
+```
+
+# Raw data 
+User provided
+
+```{r calibdata, echo=FALSE}
+
+print_table_rawdata(dfRMD, "CAL")
+
+```
+
+```{r calibdraw, echo=FALSE, fig.cap="Calibration data", fig.fullwidth=TRUE}
+
+ggplotly(print_plot_standards(dfRMD, "CAL"))%>% config(
+    toImageButtonOptions = list(
+      format = "svg"
+    ))
+
+```
+
+```{r validdata, echo=FALSE}
+
+print_table_rawdata(dfRMD, "VAL")
+
+```
+
+# R Packages used
+
+Aphalo, Pedro J. 2022a. Ggpmisc: Miscellaneous Extensions to Ggplot2. <https://CRAN.R-project.org/package=ggpmisc>
+
+Aphalo, Pedro J. 2022b. Ggpp: Grammar Extensions to Ggplot2. <https://CRAN.R-project.org/package=ggpp>
+
+Dahl, David B., David Scott, Charles Roosen, Arni Magnusson, and Jonathan Swinton. 2019. Xtable: Export Tables to LaTeX or HTML. <http://xtable.r-forge.r-project.org/>
+
+Daróczi, Gergely, and Roman Tsegelskyi. 2022. Pander: An r Pandoc Writer. <https://rapporter.github.io/pander/>
+
+Dowle, Matt, and Arun Srinivasan. 2022. Data.table: Extension of 'Data.frame'. <https://CRAN.R-project.org/package=data.table>
+
+Fox, John, and Sanford Weisberg. 2019. An R Companion to Applied Regression. Third. Thousand Oaks CA: Sage. <https://socialsciences.mcmaster.ca/jfox/Books/Companion/>
+
+Fox, John, Sanford Weisberg, and Brad Price. 2022a. Car: Companion to Applied Regression. <https://CRAN.R-project.org/package=car>
+
+Fox, John, Sanford Weisberg, and Brad Price. 2022b. carData: Companion to Applied Regression Data Sets. <https://CRAN.R-project.org/package=carData>
+
+Garnier, Simon. 2021. Viridis: Colorblind-Friendly Color Maps for r. <https://CRAN.R-project.org/package=viridis>
+
+Garnier, Simon.. 2022. viridisLite: Colorblind-Friendly Color Maps (Lite Version). <https://CRAN.R-project.org/package=viridisLite>
+
+Hofner, Benjamin. 2021. papeR: A Toolbox for Writing Pretty Papers and Reports. <https://CRAN.R-project.org/package=papeR>
+
+Hofner, Benjamin, and with contributions by many others. 2021. papeR: A Toolbox for Writing Pretty Papers and Reports. <https://github.com/hofnerb/papeR>
+
+Hothorn, Torsten, Achim Zeileis, Richard W. Farebrother, and Clint Cummins. 2022. Lmtest: Testing Linear Regression Models. <https://CRAN.R-project.org/package=lmtest>
+
+R Core Team. 2022. R: A Language and Environment for Statistical Computing. Vienna, Austria: R Foundation for Statistical Computing. <https://www.R-project.org/>
+
+Sievert, Carson. 2020. Interactive Web-Based Data Visualization with r, Plotly, and Shiny. Chapman; Hall/CRC. <https://plotly-r.com>
+
+Sievert, Carson, Chris Parmer, Toby Hocking, Scott Chamberlain, Karthik Ram, Marianne Corvellec, and Pedro Despouy. 2022. Plotly: Create Interactive Web Graphics via Plotly.js. <https://CRAN.R-project.org/package=plotly>
+
+Wickham, Hadley. 2016. Ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York. <https://ggplot2.tidyverse.org>
+
+Wickham, Hadley, and Jennifer Bryan. 2022. Readxl: Read Excel Files. <https://CRAN.R-project.org/package=readxl>
+
+Wickham, Hadley, Winston Chang, Lionel Henry, Thomas Lin Pedersen, Kohske Takahashi, Claus Wilke, Kara Woo, Hiroaki Yutani, and Dewey Dunnington. 2022. Ggplot2: Create Elegant Data Visualisations Using the Grammar of Graphics. <https://CRAN.R-project.org/package=ggplot2>
+
+Wickham, Hadley, Romain François, Lionel Henry, and Kirill Müller. 2022. Dplyr: A Grammar of Data Manipulation. <https://CRAN.R-project.org/package=dplyr>
+
+Zeileis, Achim, and Gabor Grothendieck. 2005. "Zoo: S3 Infrastructure for Regular and Irregular Time Series." Journal of Statistical Software 14 (6): 1--27. <https://doi.org/10.18637/jss.v014.i06>
+
+Zeileis, Achim, Gabor Grothendieck, and Jeffrey A. Ryan. 2022. Zoo: S3 Infrastructure for Regular and Irregular Time Series (z's Ordered Observations). <https://zoo.R-Forge.R-project.org/>
+
+Zeileis, Achim, and Torsten Hothorn. 2002. "Diagnostic Checking in Regression Relationships." R News 2 (3): 7--10. <https://CRAN.R-project.org/doc/Rnews/>
+
+Zhu, Hao. 2021. kableExtra: Construct Complex Table with Kable and Pipe Syntax. <https://CRAN.R-project.org/package=kableExtra>

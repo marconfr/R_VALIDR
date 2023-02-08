@@ -1,5 +1,4 @@
 ---
-title: "Assay validation analysis"
 output: 
   bookdown::html_document2:
     fig_caption: yes
@@ -9,13 +8,17 @@ output:
 params:
   dfASSAY : NULL
   nBeta : 0.8
-  nACC_LIMIT : 5
-  name : "NULL" 
-  firstname : "NULL"
-  substance : "NULL"
-  pharmprep : "NULL"
-  concunit : "NULL"
-  signalunit : "NULL"
+  nACC_LIMIT : 0.1
+  name : "default" 
+  firstname : "default"
+  substance : "default"
+  pharmprep : "default"
+  concunit : "default"
+---
+
+---
+title: "Validation report of the method for the determination of `r paste(params$substance)` in `r paste(params$pharmprep)`"
+author: "`r paste(params$name, params$firstname, sep=" ")`"
 date: "`r Sys.Date()`"
 ---
 
@@ -50,16 +53,15 @@ what_to_grep <- c("LIN", "LIN_0", "LIN_1X", "LIN_1Y", "LIN_0MAX")
 listVALID <- list()
 
 dfRMD <- params$dfASSAY
-#dfRMD <- read_excel("data_valid2.xlsx") for RMD debug
+#dfRMD <- read_excel("data_valid2.xlsx") #for RMD debug
 
 nBeta <- as.double(params$nBeta)
-nACC_LIMIT <- as.double(params$nACC_LIMIT)
+nACC_LIMIT <- as.double(params$nACC_LIMIT)*100
 sName <- params$name
 sFirstName <- params$firstname
 sSubstance <- params$substance
 sPharmPrep <- params$pharmprep
 sConcUnit <- params$concunit
-sSignalUnit <- params$signalunit
 
 
 # Function were placed directly in RMarkdown files
@@ -180,6 +182,8 @@ compute_calibration_curves <- function() {
   }
 }
 
+#data_alignement <- function(){}
+
 # Running function compute_calibration_curves()
 # compute_calibration_curves(dfRMD)
 
@@ -278,7 +282,7 @@ plot_residues <- function(data) {
                          geom = "line") +
             geom_hline(yintercept = 0, color = "red") +
             ylab("Relative bias (%)") +
-            xlab("Concentration levels") +
+            xlab(paste("Concentration levels ", sConcUnit)) +
             labs(color = "Regression types") +
             scale_color_manual(values = colors) +
             theme_light()
@@ -305,8 +309,7 @@ plot_residues <- function(data) {
 # Change applied to dfRMD (global variable) and listVALID (global variable)
 #------------------------------------------------------------------------------#
 
-# To do -> Trouver les points d'intersections avec les limites (-> Limites de quanti)
-# 
+
 compute_validation_data <- function() {
 
   # MEAN of Inverse prediction by levels
@@ -373,7 +376,50 @@ compute_validation_data <- function() {
 #viewing
 #check = listVALID[["LIN"]]
 
+
+#------------------------------------------------------------------------------#
+# These functions search coordinate of LOQ 
+#------------------------------------------------------------------------------#
+
+find_x <- function(y, x1, y1, x2, y2) {
+  m <- (y2 - y1) / (x2 - x1)
+  b <- y1 - m * x1
+  x <- (y - b) / m
+  if((x>x1 && x<x2)){return(x)}
+}
+
+find_loq <- function(data){
+      temp <- data %>% group_by(CONC_LEVEL) %>%
+      select(-SERIE, -pass) %>%
+      summarize_all(~ mean(.x, na.rm = TRUE)) %>%
+      select(CONC_LEVEL, TVL_RELATIVE, TVH_RELATIVE)
+      dfLOQ <- data.frame(X=numeric(),Y=numeric())
+      for(i in 1:(nrow(temp)-1)){
+          if(class(invisible(find_x(y = -nACC_LIMIT, x1 = temp$CONC_LEVEL[i], 
+                                            y1 = temp$TVL_RELATIVE[i],x2 = temp$CONC_LEVEL[i+1], y2 = temp$TVL_RELATIVE[i+1])))!= "NULL"){
+            dfLOQ <- dfLOQ %>% add_row(
+              tibble(X=find_x(y = -nACC_LIMIT, x1 = temp$CONC_LEVEL[i], y1 = temp$TVL_RELATIVE[i],
+                                 x2 = temp$CONC_LEVEL[i+1], y2 = temp$TVL_RELATIVE[i+1]),
+              Y=-nACC_LIMIT))
+          }
+      }
+      for(i in 1:(nrow(temp)-1)){
+        if(class(invisible(find_x(y = nACC_LIMIT, x1 = temp$CONC_LEVEL[i], 
+                                  y1 = temp$TVH_RELATIVE[i],x2 = temp$CONC_LEVEL[i+1], y2 = temp$TVH_RELATIVE[i+1])))!= "NULL"){
+          dfLOQ <- dfLOQ %>% add_row(
+            tibble(X=find_x(y = nACC_LIMIT, x1 = temp$CONC_LEVEL[i], y1 = temp$TVH_RELATIVE[i],x2 = temp$CONC_LEVEL[i+1], y2 = temp$TVH_RELATIVE[i+1]),
+                   Y=nACC_LIMIT))
+        }
+      }
+      return(dfLOQ)
+}
+
+#------------------------------------------------------------------------------#
+# This function plot accuracy profile  
+#------------------------------------------------------------------------------#
+
 plot_validation <- function(data, string) {
+  dfLOQ<-find_loq(data)
   p <- ggplot(data, aes(x = CONC_LEVEL, y = ERROR_pc, color = as.factor(SERIE))) +
     geom_hline(yintercept = nACC_LIMIT, color = "red", linetype = "dashed") +
     geom_hline(yintercept = -nACC_LIMIT, color = "red", linetype = "dashed") +
@@ -394,7 +440,9 @@ plot_validation <- function(data, string) {
     xlab(paste("Concentration levels ", sConcUnit)) +
     ylab("Relative error (%)") +
     labs(color = "Serie")
-
+  if(nrow(dfLOQ>1)){
+    p <- p + geom_point(data=dfLOQ, aes(x=X, y=Y), color="red", shape=8, size=2)
+  }
   return(p)
 }
 
@@ -500,37 +548,116 @@ anova_model_stat <- function(data) {
 <!-- Reste à mettre les méthodes et calculs
 ANOVA sur les profils de linarité
 Faire des copier coller
-Faciliter l'interprétation -->
+Faciliter l'interprétation
+
+Register DOI to ZENODO https://about.zenodo.org/principles/ 
+-->
 ```
-This report was generated by `r paste(sName, sFirstName, sep=" ")`.
 
-When writing a paper using a method validated by this software, we recommend that you cite the software beyond and provide the raw data used as supplementary material for your paper.
+This HTML report was generated by: `r paste(sName, sFirstName, sep=" ")` (user defined) using ValidR online Shiny application with `r paste(R.Version()$version.string)` statistical software. The quality of the report rendering (e.g. math symbols) may depend on the browser and requires javascript to be enabled.
 
-To cite this software :
+All figures are [interactive](https://plotly-r.com/control-modebar.html) and can be filtered, zoomed, downloaded (publication quality [svg format](https://fr.wikipedia.org/wiki/Scalable_Vector_Graphics)) using menu bar on the upper right corner or the legend. Hovering over lines and points on the graph will display available informations.
 
-> ValidR - Assay
+**Incorrect use of the application or templates can lead to errors.**
+
+**The results are provided "as is" and should be reviewed and interpreted. Neither the designers nor the providers of the application can be held responsible for any errors or adverse consequences resulting from the use of the app or this report.**
+
+Uploaded data were reported at the end within the section \@ref(raw-data).
 
 # Methods
 
-* Active substance : `r paste(sSubstance)`
-* Pharmaceutical preparation : `r paste(sPharmPrep)`
+Validation of assay methods is based on the use of calibration and validation standards made by accurately weighing predetermined quantities of analytes as required. The experiments are generally carried out on multiple series (usually carried out on different days) on multiple concentration levels with multiple replicates per level and per series.
 
-## Statistical analysis
+In order to complete this report, it is recommended to annex the exact drug formula with the reference of each of the raw materials used as well as a complete description of pre-analytical and analytical methods used.
 
-All statistical were produced using the method described in Hubert, P. et al. 2007. Harmonization of strategies for the validation of quantitative analytical procedures. A SFSTP proposal - part III. J Pharm Biomed Anal 45: 82-96. And algorithm were checked using the data providied with the article.
+## Calibration curves
 
-The $\beta$ value used for the calculation of the $\beta$ expectation tolerance interval was set to `r paste(nBeta)` and the acceptance limits was fixed to `r paste(nACC_LIMIT,"%")`.
+The estimation of the parameters of the calibration curves were obtained from the ordinary least squares method (OLS) using the `r knitr::inline_expr('stats::lm()')` function.
 
-The estimation of the parameters of the calibration curves was obtained by the ordinary least squares method (OLS) with `r paste(R.Version()$version.string)` software [@R-base] and the `r knitr::inline_expr('stats::lm()')` function was used. <!-- This reports was produced using pacakges [@R-data.table;@R-dplyr;@R-ggplot2;@R-ggpmisc;@R-ggpp;@R-kableExtra;@R-plotly;@R-readxl;@R-viridis;@R-viridisLite] -->.
+When possible various linear regressions were tested:
+
+-   Linear function (Linear)
+-   Linear trough 0 function (Linear 0)
+-   Linear trough 0 and the highest concentration levels function (Linear 0 - Max)
+-   Linear function with weights (1/Y and 1/X) (Linear weighed 1/X and Linear weighed 1/Y)
+
+## Estimation of trueness and precision
+
+### Models
+
+Considering $i \in [1;p]$ (series index), $j \in [1,m]$ (concentration index), $k\in [1;n]$ (repetition index) and $x_{i,j,k, calc}$ the $k$th back calculated concentration of the $i$ series $j$ level (using calibration standards) :
+
+$$
+x_{i,j,k, calc} = \mu_j + \alpha_{i,j} + \epsilon_{i,j,k}
+$$
+
+With : $\begin{cases} \mu_j &: \text{the back calculated mean of the $j$ level} \\ \alpha_{i,j} &: \text{at $j$ level, the difference between the $i$th series average and the $\mu_j$}\\ \epsilon_{i,j,k} &: \text{the experimental error} \end{cases}$
+
+$\begin{cases}\alpha_{i,j} &\sim \mathcal{N}(0,\sigma^2_{B,j}) \; \text{with $\sigma^2_{B,j}$ representing the interseries variances} \\ \epsilon_{i,j,k} &\sim \mathcal{N}(0, \sigma^2_{W,j}) \; \text{with $\sigma^2_{W,j}$ representing the intraseries variances}\end{cases}$
+
+### Trueness
+
+Trueness expresses the closeness of agreement between the mean value obtained from a series of test results and an accepted reference value. The trueness gives an indication of the systemic errors. It was calculated at each concentration level by calculating the difference between the introduced concentrations (arithmetic) mean $\overline{x}_j$ and the calculated concentrations mean $\hat{\mu}_j$.
+
+The bias (for j th level) was expressed as: $\text{Bias}_j =\hat{\mu}_j-\overline{x}_j$
+
+And the relative bias as: $\text{Bias(%)}_j = \frac{\hat{\mu}_j-\overline{x}_j}{\overline{x}_j}\times 100$
+
+The recovery (for j th level) was expressed as : $\text{Recovery(%)}_j = \frac{\hat{\mu}_j}{\overline{x}_j}\times 100$
+
+### Fidelity & intermediate precision
+
+Fidelity expresses the closeness of agreement between a series of measurements from multiple takes of the same homogeneous sample, under prescribed conditions. It provides information on random errors and is assessed at two levels, repeatability and intermediate precision.
+
+Intra and interseries variance could be estimated at every $j$ level using the restricted maximum likelihood method:
+
+$\begin{align} \hat{\mu}_j &= \frac{1}{\sum^p_{i=1}n_{i,j}}\cdot\sum^p_{i=1}\sum^{n_{i,j}}_{k=1} x_{i,j,k, calc} \\ \text{MSM}_j &= \frac{1}{p-1} \cdot \sum^p_{i=1}n_{i,j}\cdot \left(x_{i,j, calc}-\overline{x}_{i,j, calc}\right)^2 \\ \text{MSE}_j &=\frac{1}{\sum^p_{i=1}n_{i,j}-p}\cdot\sum^p_{i=1}\sum^{n_{i,j}}_{k=1} \left(x_{i,j, calc}-\overline{x}_{i,j, calc}\right)^2 \end{align}$
+
+$\text{if MSE$_j$ < MSM$_j$} \begin{cases} \hat{\sigma}^2_{W,j} &=\text{MSE}_j \\ \hat{\sigma}^2_{B,j} &= \frac{\text{MSM}_j-\text{MSE}_j}{n} \end{cases}$
+
+$\text{else} \begin{cases} \hat{\sigma}^2_{W,j} &=\frac{1}{pn - 1}\cdot\sum^p_{i=1}\sum^{k}_{j=1} \left(x_{i,j,k calc}-\overline{x}_{j, calc}\right)^2 \\ \hat{\sigma}^2_{B,j} &= 0 \end{cases}$
+
+Intermediate precision was then calculated: $\hat{\sigma}^2_{IP,j} = \hat{\sigma}^2_{W,j} + \hat{\sigma}^2_{B,j}$
+
+Each corresponding coefficient of variation was determined as: $\text{CV(%)} = \frac{\sigma_j}{\hat{\mu}_j}$
+
+### Tolerance interval and accuracy profiles
+
+The tolerance interval is a statistical interval within which, with some confidence level, a specified proportion ($\beta$) of a sampled population falls. The construction of the tolerance intervals using standard solutions therefore makes it possible to predict with a some confidence levels where a proportion of the dosages will falls.
+
+The tolerance interval has been computed, at each concentration levels using validation standards as follows:
+
+-   $\hat{\mu}_j \pm \mathcal{Q}t(\upsilon,\frac{1 + \beta}{2})\cdot\sqrt{1 + \frac{1}{pn\cdot B^2_j}}\cdot\hat\sigma_{IP,j}$
+
+-   $\text{Bias(%)} \pm \mathcal{Q}_t(\upsilon,\frac{1 + \beta}{2}) \cdot \sqrt{1 + \frac{1}{pn\cdot B^2_j}} \cdot \hat{ \text{CV}}_{IP,j}$
+
+$with \begin{cases}\begin{align} R_j &= \frac{\sigma^2_{B,j}}{\sigma^2_{W,j}} \\ B_j &= \sqrt{\frac{R_j +1}{n\cdot R_j + 1}} \\ \upsilon &= \frac{(R+1)^2}{\frac{(R + (1/n))^2}{p - 1} + \frac{(1 - 1/n)}{pn} } \end{align}\end{cases}$
+
+$\mathcal{Q}_t(\upsilon,\frac{1 + \beta}{2})$ corresponded to the $\beta$ quantile of the Student $t$ distribution with $\upsilon$ degrees of freedom.
+
+-   **The $\beta$ value used for the calculation of the $\beta$-expectation tolerance interval was set to: `r paste(nBeta)` (user defined).**
+
+The accuracy profiles ([─]{style="color:blue"}) were plotted joining the tolerance intervals obtained for each of the levels tested. A method is validated over the full range of measurements, when the accuracy profile ([─]{style="color:blue"}) is fully included between the upper and lower bound of the acceptability limit $[-\lambda;+\lambda]$ ([┄]{style="color:red"}) set a priori. The method can only be used over the concentration range for which the accuracy profile is entirely within the acceptability limit $[-\lambda;+\lambda]$.
+
+-   **The acceptability value used was set to: `r paste(nACC_LIMIT,"%")` (user defined).**
+
+### Determination of quantification limits.
+
+When the accuracy profile ([─]{style="color:blue"}) is not fully included within the acceptability limit $[-\lambda;+\lambda]$ ( [┄]{style="color:red"}), a limit of quantification can be determined at the intersection of the accuracy profile with the upper ($+\lambda$) or lower ($-\lambda$) acceptability limit. This can happen at low or high concentrations and can produce lower or higher LOQs respectively.
+
+The coordinates of the intersections between the accuracy profiles and the acceptability limits were calculated and plotted on the tolerance profiles ([✴]{style="color:red"})
+
+-   *The lower LOQ* is the lowest amount of analyte in a sample which can be quantitatively determined with suitable precision and accuracy. It should be determined at lower levels using the last intersection point between accuracy profile and acceptance limits, before accuracy profile become fully included in acceptance limits. It's the first level tested if accuracy profile is fully inside acceptance limits at this level.
+
+-   *The upper LOQ* is the highest amount of analyte in a sample which can be quantitatively determined with suitable precision and accuracy. It should be determined at higher levels using the first intersection point between accuracy profile and acceptance limits, before accuracy profile partly or fully exceeds acceptance limits. It is the last level tested if accuracy profile is fully inside acceptance limits from the lower LOQ to this level.
 
 # Analysis of response function (calibration curves)
 
 ## Methods and Data
 
-Response functions $signal=f(concentration)$ were analyzed using `stats4::lm()` function in R, using calibration data provided Table \@ref(tab:calibdata) and Figure \@ref(fig:calibdraw)).
+Response functions $signal=f(concentration)$ were analysed using `stats4::lm()` function in R, using calibration data provided in Table \@ref(tab:calibdata) and Figure \@ref(fig:calibdraw)) (see section \@ref(raw-data)).
 
 ```{r }
-
 calib_curves <- data.frame("method"=character(),
                            "series"=character(),
                            "intercept"=numeric(),
@@ -544,17 +671,12 @@ compute_calibration_curves()
 
 ```
 
-Analysis were performed using :
+Analysis was performed using :
 
--   Linear function (Linear) - Linear trough 0 function (Linear 0)
-    -   Linear trough 0 and the highest concentration levels function (Linear 0 - Max)
-    -   Linear function with weights (1/Y and 1/X) (Linear weighed 1/X and Linear weighed 1/Y)
-
-```{r calibdraw, echo=FALSE, fig.cap="Calibration data", fig.fullwidth=TRUE}
-
-ggplotly(print_plot_standards(dfRMD, "CAL"))
-
-```
+-   Linear function (Linear)
+-   Linear trough 0 function (Linear 0)
+-   Linear trough 0 and the highest concentration levels function (Linear 0 - Max)
+-   Linear function with weights (1/Y and 1/X) (Linear weighed 1/X and Linear weighed 1/Y)
 
 ## Response functions obtained
 
@@ -571,15 +693,17 @@ calib_curves %>% arrange(method) %>%
 
 ```
 
-### Residues for each calibration curves at each levels
+### Residues for each calibration curve at each level
 
 The residues obtained are shown in the interactive figure \@ref(fig:calibresidues).
 
-You can click or double-click on a legend to isolate or display a curve. You can zoom in on a part of the figure.
-
 ```{r calibresidues, echo=FALSE, fig.width=10,fig.height=4,fig.fullwidth=TRUE, fig.cap="Relative bias calculated from regression"}
 
-ggplotly(plot_residues(dfRMD))
+ggplotly(plot_residues(dfRMD)) %>% config(
+    toImageButtonOptions = list(
+      format = "svg"
+    ))
+
 
 ```
 
@@ -611,22 +735,27 @@ summary_validation_rel(as.data.frame(listVALID[["LIN"]]), names(listVALID["LIN"]
 
 ### Accuracy profile
 
-Accuracy profile are shown Figure \@ref(fig:aplin). The 𝛽-tolerance interval (blue lines) should be entirely within the acceptance limits (red dashed lines).
+Accuracy profile is shown Figure \@ref(fig:aplin). The 𝛽-tolerance interval ([─]{style="color:blue"}) should be entirely within the acceptance limits ([┄]{style="color:red"}). Coordinates of points of intersection between the tolerance interval and the acceptability limit were marked with a red star ([✴]{style="color:red"}) when present.
 
 ```{r aplin, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Accuracy profiles  (red dashed line: acceptance limits, blue lines: 𝛽-tolerance intervals)."}
 
-ggplotly(plot_validation(as.data.frame(listVALID[["LIN"]]), names(listVALID["LIN"])))
-
+ggplotly(plot_validation(as.data.frame(listVALID[["LIN"]]), names(listVALID["LIN"])))%>% config(
+    toImageButtonOptions = list(
+      format = ""
+    ))
 
 ```
 
-### Linearity profile
+### Linearity Profile
 
-Linearity profile are shown Figure \@ref(fig:lplin). You should check that the black line (linear model) should be superimposed on the red dashed identity line.
+Linearity profile is shown Figure \@ref(fig:lplin). You should check that the black line (linear model) should be superimposed on the red dashed identity line.
 
 ```{r lplin, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Linearity profiles (red dashed line: identity line, black lines: linear regression lines, blue lines: 𝛽-tolerance intervals)."}
 
-ggplotly(plot_linearity(as.data.frame(listVALID[["LIN"]]), names(listVALID["LIN"])))
+ggplotly(plot_linearity(as.data.frame(listVALID[["LIN"]]), names(listVALID["LIN"])))%>% config(
+    toImageButtonOptions = list(
+      format = "svg"
+    ))
 
 ```
 
@@ -645,9 +774,7 @@ kbl(prettify(summary(linear_model_stat(listVALID[["LIN"]]))),
 
 ### Studentized Breusch-Pagan test for heteroskedasticity
 
-`r if(bptest(linear_model_stat(listVALID[["LIN"]]))$p.value<0.05){"The p-value < 0.05 which is in favor of heterosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are non-constant (FAIL)"}else{"The p-value > O.05 which is in favor of homosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are constant (PASS)"}`
-
-<!-- is in favor of heterosedasticity (the standard deviations of a calculated concentrations as related to introduced concentrations, are non-constant)"} else {"A p-value > 0.05 is in favor of homosedasticity (the standard deviations of a calculated concentrations as related to introduced concentrations, are constant")}` -->
+`r if(bptest(linear_model_stat(listVALID[["LIN"]]))$p.value<0.05){"The p-value < 0.05 which is in favor of heterosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are non-constant (this should be investigated)"}else{"The p-value > O.05 which is in favor of homosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are constant (expected result)"}`
 
 ```{r }
 
@@ -655,11 +782,11 @@ pander(bptest(linear_model_stat(listVALID[["LIN"]])), caption="Result of the stu
 
 ```
 
-## Using a linear forced trough 0 calibration curve
+## Using a linear forced through 0 calibration curve
 
 ### Trueness and precision obtained
 
-Trueness and precision are depicted on table \@ref(tab:iplinabs) and \@ref(tab:iplinrel)
+Trueness and precision are depicted on the table \@ref(tab:iplin0abs) and \@ref(tab:iplin0rel)
 
 ```{r iplin0abs, echo=FALSE, warning=FALSE, fig.width=10,fig.height=4,fig.fullwidth=TRUE, fig.cap="Trueness and precision obtained"}
 
@@ -675,22 +802,28 @@ summary_validation_rel(as.data.frame(listVALID[["LIN_0"]]), names(listVALID["LIN
 
 ### Accuracy profile
 
-Accuracy profile are shown Figure \@ref(fig:aplin). The 𝛽-tolerance interval (blue lines) should be entirely within the acceptance limits (red dashed lines).
+Accuracy profile is shown in Figure \@ref(fig:aplin0). The 𝛽-tolerance interval ([─]{style="color:blue"}) should be entirely within the acceptance limits ([┄]{style="color:red"}). Coordinates of points of intersection between the tolerance interval and the acceptability limit were marked with a red star ([✴]{style="color:red"}) when present.
 
 ```{r aplin0, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Accuracy profiles  (red dashed line: acceptance limits, blue lines: 𝛽-tolerance intervals)."}
 
-  ggplotly(plot_validation(as.data.frame(listVALID[["LIN_0"]]), names(listVALID["LIN_0"])))
+  ggplotly(plot_validation(as.data.frame(listVALID[["LIN_0"]]), names(listVALID["LIN_0"]))) %>% config(
+    toImageButtonOptions = list(
+      format = "svg"
+    ))
 
 
 ```
 
-### Linearity profile
+### Linearity Profile
 
-Linearity profile are shown Figure \@ref(fig:lplin). You should check that the black line (linear model) should be superimposed on the red dashed identity line.
+Linearity profile is shown in Figure \@ref(fig:lplin0). You should check that the black line (linear model) should be superimposed on the red dashed identity line.
 
 ```{r lplin0, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Linearity profiles (red dashed line: identity line, black lines: linear regression lines, blue lines: 𝛽-tolerance intervals)."}
 
-  ggplotly(plot_linearity(as.data.frame(listVALID[["LIN_0"]]), names(listVALID["LIN_0"])))
+  ggplotly(plot_linearity(as.data.frame(listVALID[["LIN_0"]]), names(listVALID["LIN_0"]))) %>% config(
+    toImageButtonOptions = list(
+      format = "svg"
+    ))
 
 ```
 
@@ -709,7 +842,7 @@ kbl(prettify(summary(linear_model_stat(listVALID[["LIN_0"]]))),
 
 ### Studentized Breusch-Pagan test for heteroskedasticity
 
-`r if(bptest(linear_model_stat(listVALID[["LIN_0"]]))$p.value<0.05){"The p-value < 0.05 which is in favor of heterosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are non-constant (FAIL)"}else{"The p-value > O.05 which is in favor of homosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are constant (PASS)"}`
+`r if(bptest(linear_model_stat(listVALID[["LIN_0"]]))$p.value<0.05){"The p-value < 0.05 which is in favor of heterosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are non-constant (this should be investigated)"}else{"The p-value > O.05 which is in favor of homosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are constant (expected result)"}`
 
 ```{r }
 
@@ -717,11 +850,11 @@ pander(bptest(linear_model_stat(listVALID[["LIN_0"]])), caption="Result of the s
 
 ```
 
-## Using a linear calibration curve with the highest level only and forced trough 0
+## Using a linear calibration curve with the highest level only and forced through 0
 
 ### Trueness and precision obtained
 
-Trueness and precision are depicted on table \@ref(tab:iplinabs) and \@ref(tab:iplinrel)
+Trueness and precision are depicted on the table \@ref(tab:iplinmaxabs) and \@ref(tab:iplinmaxrel)
 
 ```{r iplinmaxabs, echo=FALSE, warning=FALSE, fig.width=10,fig.height=4,fig.fullwidth=TRUE, fig.cap="Trueness and precision obtained"}
 
@@ -737,22 +870,28 @@ summary_validation_rel(as.data.frame(listVALID[["LIN_0MAX"]]), names(listVALID["
 
 ### Accuracy profile
 
-Accuracy profile are shown Figure \@ref(fig:aplin). The 𝛽-tolerance interval (blue lines) should be entirely within the acceptance limits (red dashed lines).
+Accuracy profile is shown in Figure \@ref(fig:aplinmax). The 𝛽-tolerance interval ([─]{style="color:blue"}) should be entirely within the acceptance limits ([┄]{style="color:red"}). Coordinates of points of intersection between the tolerance interval and the acceptability limit were marked with a red star ([✴]{style="color:red"}) when present.
 
 ```{r aplinmax, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Accuracy profiles  (red dashed line: acceptance limits, blue lines: 𝛽-tolerance intervals)."}
 
-  ggplotly(plot_validation(as.data.frame(listVALID[["LIN_0MAX"]]), names(listVALID["LIN_0MAX"])))
+  ggplotly(plot_validation(as.data.frame(listVALID[["LIN_0MAX"]]), names(listVALID["LIN_0MAX"])))%>% config(
+    toImageButtonOptions = list(
+      format = "svg"
+    ))
 
 
 ```
 
-### Linearity profile
+### Linearity Profile
 
-Linearity profile are shown Figure \@ref(fig:lplin). You should check that the black line (linear model) should be superimposed on the red dashed identity line.
+Linearity profile is shown in Figure \@ref(fig:lplinmax). You should check that the black line (linear model) should be superimposed on the red dashed identity line.
 
 ```{r lplinmax, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Linearity profiles (red dashed line: identity line, black lines: linear regression lines, blue lines: 𝛽-tolerance intervals)."}
 
-  ggplotly(plot_linearity(as.data.frame(listVALID[["LIN_0MAX"]]), names(listVALID["LIN_0MAX"])))
+  ggplotly(plot_linearity(as.data.frame(listVALID[["LIN_0MAX"]]), names(listVALID["LIN_0MAX"])))%>% config(
+    toImageButtonOptions = list(
+      format = "svg"
+    ))
 
 ```
 
@@ -771,9 +910,7 @@ kbl(prettify(summary(linear_model_stat(listVALID[["LIN_0MAX"]]))),
 
 ### Studentized Breusch-Pagan test for heteroskedasticity
 
-`r if(bptest(linear_model_stat(listVALID[["LIN_0MAX"]]))$p.value<0.05){"The p-value < 0.05 which is in favor of heterosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are non-constant (FAIL)"}else{"The p-value > O.05 which is in favor of homosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are constant (PASS)"}`
-
-<!-- is in favor of heterosedasticity (the standard deviations of a calculated concentrations as related to introduced concentrations, are non-constant)"} else {"A p-value > 0.05 is in favor of homosedasticity (the standard deviations of a calculated concentrations as related to introduced concentrations, are constant")}` -->
+`r if(bptest(linear_model_stat(listVALID[["LIN_0MAX"]]))$p.value<0.05){"The p-value < 0.05 which is in favor of heterosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are non-constant (this should be investigated)"}else{"The p-value > O.05 which is in favor of homosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are constant (expected result)"}`
 
 ```{r }
 
@@ -785,7 +922,7 @@ pander(bptest(linear_model_stat(listVALID[["LIN_0MAX"]])), caption="Result of th
 
 ### Trueness and precision obtained
 
-Trueness and precision are depicted on table \@ref(tab:iplinabs) and \@ref(tab:iplinrel)
+Trueness and precision are depicted on the table \@ref(tab:iplin1yabs) and \@ref(tab:iplin1yrel)
 
 ```{r iplin1yabs, echo=FALSE, warning=FALSE, fig.width=10,fig.height=4,fig.fullwidth=TRUE, fig.cap="Trueness and precision obtained"}
 
@@ -801,22 +938,28 @@ summary_validation_rel(as.data.frame(listVALID[["LIN_1Y"]]), names(listVALID["LI
 
 ### Accuracy profile
 
-Accuracy profile are shown Figure \@ref(fig:aplin). The 𝛽-tolerance interval (blue lines) should be entirely within the acceptance limits (red dashed lines).
+Accuracy profile is shown in Figure \@ref(fig:aplin1y). The 𝛽-tolerance interval ([─]{style="color:blue"}) should be entirely within the acceptance limits ([┄]{style="color:red"}). Coordinates of points of intersection between the tolerance interval and the acceptability limit were marked with a red star ([✴]{style="color:red"}) when present.
 
 ```{r aplin1y, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Accuracy profiles  (red dashed line: acceptance limits, blue lines: 𝛽-tolerance intervals)."}
 
-ggplotly(plot_validation(as.data.frame(listVALID[["LIN_1Y"]]), names(listVALID["LIN_1Y"])))
+ggplotly(plot_validation(as.data.frame(listVALID[["LIN_1Y"]]), names(listVALID["LIN_1Y"])))%>% config(
+    toImageButtonOptions = list(
+      format = "svg"
+    ))
 
 
 ```
 
-### Linearity profile
+### Linearity Profile
 
-Linearity profile are shown Figure \@ref(fig:lplin). You should check that the black line (linear model) should be superimposed on the red dashed identity line.
+Linearity profile is shown in Figure \@ref(fig:lplin1y). You should check that the black line (linear model) should be superimposed on the red dashed identity line.
 
 ```{r lplin1y, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Linearity profiles (red dashed line: identity line, black lines: linear regression lines, blue lines: 𝛽-tolerance intervals)."}
 
-ggplotly(plot_linearity(as.data.frame(listVALID[["LIN_1Y"]]), names(listVALID["LIN_1Y"])))
+ggplotly(plot_linearity(as.data.frame(listVALID[["LIN_1Y"]]), names(listVALID["LIN_1Y"])))%>% config(
+    toImageButtonOptions = list(
+      format = "svg"
+    ))
 
 ```
 
@@ -835,7 +978,7 @@ kbl(prettify(summary(linear_model_stat(listVALID[["LIN_1Y"]]))),
 
 ### Studentized Breusch-Pagan test for heteroskedasticity
 
-`r if(bptest(linear_model_stat(listVALID[["LIN_1Y"]]))$p.value<0.05){"The p-value < 0.05 which is in favor of heterosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are non-constant (FAIL)"}else{"The p-value > O.05 which is in favor of homosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are constant (PASS)"}`
+`r if(bptest(linear_model_stat(listVALID[["LIN_1Y"]]))$p.value<0.05){"The p-value < 0.05 which is in favor of heterosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are non-constant (this should be investigated)"}else{"The p-value > O.05 which is in favor of homosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are constant (expected result)"}`
 
 ```{r }
 
@@ -847,7 +990,7 @@ pander(bptest(linear_model_stat(listVALID[["LIN_1Y"]])), caption="Result of the 
 
 ### Trueness and precision obtained
 
-Trueness and precision are depicted on table \@ref(tab:iplinabs) and \@ref(tab:iplinrel)
+Trueness and precision are depicted on the table \@ref(tab:iplin1xabs) and \@ref(tab:iplin1xrel)
 
 ```{r iplin1xabs, echo=FALSE, warning=FALSE, fig.width=10,fig.height=4,fig.fullwidth=TRUE, fig.cap="Trueness and precision obtained"}
 
@@ -863,22 +1006,28 @@ summary_validation_rel(as.data.frame(listVALID[["LIN_1X"]]), names(listVALID["LI
 
 ### Accuracy profile
 
-Accuracy profile are shown Figure \@ref(fig:aplin). The 𝛽-tolerance interval (blue lines) should be entirely within the acceptance limits (red dashed lines).
+Accuracy profile is shown in Figure \@ref(fig:aplin1x). The 𝛽-tolerance interval ([─]{style="color:blue"}) should be entirely within the acceptance limits ([┄]{style="color:red"}). Coordinates of points of intersection between the tolerance interval and the acceptability limit were marked with a red star ([✴]{style="color:red"}) when present.
 
 ```{r aplin1x, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Accuracy profiles  (red dashed line: acceptance limits, blue lines: 𝛽-tolerance intervals)."}
 
-ggplotly(plot_validation(as.data.frame(listVALID[["LIN_1X"]]), names(listVALID["LIN_1X"])))
+ggplotly(plot_validation(as.data.frame(listVALID[["LIN_1X"]]), names(listVALID["LIN_1X"])))%>% config(
+    toImageButtonOptions = list(
+      format = "svg"
+    ))
 
 
 ```
 
-### Linearity profile
+### Linearity Profile
 
-Linearity profile are shown Figure \@ref(fig:lplin). You should check that the black line (linear model) should be superimposed on the red dashed identity line.
+Linearity profile is shown in Figure \@ref(fig:lplin1x). You should check that the black line (linear model) should be superimposed on the red dashed identity line.
 
 ```{r lplin1x, echo=FALSE, fig.width=10, fig.height=4, fig.fullwidth=TRUE, fig.cap="Linearity profiles (red dashed line: identity line, black lines: linear regression lines, blue lines: 𝛽-tolerance intervals)."}
 
-ggplotly(plot_linearity(as.data.frame(listVALID[["LIN_1X"]]), names(listVALID["LIN_1X"])))
+ggplotly(plot_linearity(as.data.frame(listVALID[["LIN_1X"]]), names(listVALID["LIN_1X"])))%>% config(
+    toImageButtonOptions = list(
+      format = "svg"
+    ))
 
 ```
 
@@ -897,7 +1046,7 @@ kbl(prettify(summary(linear_model_stat(listVALID[["LIN_1X"]]))),
 
 ### Studentized Breusch-Pagan test for heteroskedasticity
 
-`r if(bptest(linear_model_stat(listVALID[["LIN_1X"]]))$p.value<0.05){"The p-value < 0.05 which is in favor of heterosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are non-constant (FAIL)"}else{"The p-value > O.05 which is in favor of homosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are constant (PASS)"}`
+`r if(bptest(linear_model_stat(listVALID[["LIN_1X"]]))$p.value<0.05){"The p-value < 0.05 which is in favor of heterosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are non-constant (this should be investigated)"}else{"The p-value > O.05 which is in favor of homosedasticity and standard deviations of a calculated concentrations as related to introduced concentrations, are constant (expected result)"}`
 
 ```{r }
 
@@ -905,11 +1054,21 @@ pander(bptest(linear_model_stat(listVALID[["LIN_1X"]])), caption="Result of the 
 
 ```
 
-# Raw data
+# Raw data 
+User provided.
 
 ```{r calibdata, echo=FALSE}
 
 print_table_rawdata(dfRMD, "CAL")
+
+```
+
+```{r calibdraw, echo=FALSE, fig.cap="Calibration data", fig.fullwidth=TRUE}
+
+ggplotly(print_plot_standards(dfRMD, "CAL"))%>% config(
+    toImageButtonOptions = list(
+      format = "svg"
+    ))
 
 ```
 
@@ -919,52 +1078,52 @@ print_table_rawdata(dfRMD, "VAL")
 
 ```
 
-# Packages
+# R Packages used
 
-Aphalo, Pedro J. 2022a. Ggpmisc: Miscellaneous Extensions to Ggplot2. <https://CRAN.R-project.org/package=ggpmisc>.
+Aphalo, Pedro J. 2022a. Ggpmisc: Miscellaneous Extensions to Ggplot2. <https://CRAN.R-project.org/package=ggpmisc>
 
-Aphalo, Pedro J. 2022b. Ggpp: Grammar Extensions to Ggplot2. <https://CRAN.R-project.org/package=ggpp>.
+Aphalo, Pedro J. 2022b. Ggpp: Grammar Extensions to Ggplot2. <https://CRAN.R-project.org/package=ggpp>
 
-Dahl, David B., David Scott, Charles Roosen, Arni Magnusson, and Jonathan Swinton. 2019. Xtable: Export Tables to LaTeX or HTML. <http://xtable.r-forge.r-project.org/>.
+Dahl, David B., David Scott, Charles Roosen, Arni Magnusson, and Jonathan Swinton. 2019. Xtable: Export Tables to LaTeX or HTML. <http://xtable.r-forge.r-project.org/>
 
-Daróczi, Gergely, and Roman Tsegelskyi. 2022. Pander: An r Pandoc Writer. <https://rapporter.github.io/pander/>.
+Daróczi, Gergely, and Roman Tsegelskyi. 2022. Pander: An r Pandoc Writer. <https://rapporter.github.io/pander/>
 
-Dowle, Matt, and Arun Srinivasan. 2022. Data.table: Extension of 'Data.frame'. <https://CRAN.R-project.org/package=data.table>.
+Dowle, Matt, and Arun Srinivasan. 2022. Data.table: Extension of 'Data.frame'. <https://CRAN.R-project.org/package=data.table>
 
-Fox, John, and Sanford Weisberg. 2019. An R Companion to Applied Regression. Third. Thousand Oaks CA: Sage. <https://socialsciences.mcmaster.ca/jfox/Books/Companion/>.
+Fox, John, and Sanford Weisberg. 2019. An R Companion to Applied Regression. Third. Thousand Oaks CA: Sage. <https://socialsciences.mcmaster.ca/jfox/Books/Companion/>
 
-Fox, John, Sanford Weisberg, and Brad Price. 2022a. Car: Companion to Applied Regression. <https://CRAN.R-project.org/package=car>.
+Fox, John, Sanford Weisberg, and Brad Price. 2022a. Car: Companion to Applied Regression. <https://CRAN.R-project.org/package=car>
 
-Fox, John, Sanford Weisberg, and Brad Price. 2022b. carData: Companion to Applied Regression Data Sets. <https://CRAN.R-project.org/package=carData>.
+Fox, John, Sanford Weisberg, and Brad Price. 2022b. carData: Companion to Applied Regression Data Sets. <https://CRAN.R-project.org/package=carData>
 
-Garnier, Simon. 2021. Viridis: Colorblind-Friendly Color Maps for r. <https://CRAN.R-project.org/package=viridis>.
+Garnier, Simon. 2021. Viridis: Colorblind-Friendly Color Maps for r. <https://CRAN.R-project.org/package=viridis>
 
-Garnier, Simon.. 2022. viridisLite: Colorblind-Friendly Color Maps (Lite Version). <https://CRAN.R-project.org/package=viridisLite>.
+Garnier, Simon.. 2022. viridisLite: Colorblind-Friendly Color Maps (Lite Version). <https://CRAN.R-project.org/package=viridisLite>
 
-Hofner, Benjamin. 2021. papeR: A Toolbox for Writing Pretty Papers and Reports. <https://CRAN.R-project.org/package=papeR>.
+Hofner, Benjamin. 2021. papeR: A Toolbox for Writing Pretty Papers and Reports. <https://CRAN.R-project.org/package=papeR>
 
-Hofner, Benjamin, and with contributions by many others. 2021. papeR: A Toolbox for Writing Pretty Papers and Reports. <https://github.com/hofnerb/papeR>.
+Hofner, Benjamin, and with contributions by many others. 2021. papeR: A Toolbox for Writing Pretty Papers and Reports. <https://github.com/hofnerb/papeR>
 
-Hothorn, Torsten, Achim Zeileis, Richard W. Farebrother, and Clint Cummins. 2022. Lmtest: Testing Linear Regression Models. <https://CRAN.R-project.org/package=lmtest>.
+Hothorn, Torsten, Achim Zeileis, Richard W. Farebrother, and Clint Cummins. 2022. Lmtest: Testing Linear Regression Models. <https://CRAN.R-project.org/package=lmtest>
 
-R Core Team. 2022. R: A Language and Environment for Statistical Computing. Vienna, Austria: R Foundation for Statistical Computing. <https://www.R-project.org/>.
+R Core Team. 2022. R: A Language and Environment for Statistical Computing. Vienna, Austria: R Foundation for Statistical Computing. <https://www.R-project.org/>
 
-Sievert, Carson. 2020. Interactive Web-Based Data Visualization with r, Plotly, and Shiny. Chapman; Hall/CRC. <https://plotly-r.com>.
+Sievert, Carson. 2020. Interactive Web-Based Data Visualization with r, Plotly, and Shiny. Chapman; Hall/CRC. <https://plotly-r.com>
 
-Sievert, Carson, Chris Parmer, Toby Hocking, Scott Chamberlain, Karthik Ram, Marianne Corvellec, and Pedro Despouy. 2022. Plotly: Create Interactive Web Graphics via Plotly.js. <https://CRAN.R-project.org/package=plotly>.
+Sievert, Carson, Chris Parmer, Toby Hocking, Scott Chamberlain, Karthik Ram, Marianne Corvellec, and Pedro Despouy. 2022. Plotly: Create Interactive Web Graphics via Plotly.js. <https://CRAN.R-project.org/package=plotly>
 
-Wickham, Hadley. 2016. Ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York. <https://ggplot2.tidyverse.org>.
+Wickham, Hadley. 2016. Ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York. <https://ggplot2.tidyverse.org>
 
-Wickham, Hadley, and Jennifer Bryan. 2022. Readxl: Read Excel Files. <https://CRAN.R-project.org/package=readxl>.
+Wickham, Hadley, and Jennifer Bryan. 2022. Readxl: Read Excel Files. <https://CRAN.R-project.org/package=readxl>
 
-Wickham, Hadley, Winston Chang, Lionel Henry, Thomas Lin Pedersen, Kohske Takahashi, Claus Wilke, Kara Woo, Hiroaki Yutani, and Dewey Dunnington. 2022. Ggplot2: Create Elegant Data Visualisations Using the Grammar of Graphics. <https://CRAN.R-project.org/package=ggplot2>.
+Wickham, Hadley, Winston Chang, Lionel Henry, Thomas Lin Pedersen, Kohske Takahashi, Claus Wilke, Kara Woo, Hiroaki Yutani, and Dewey Dunnington. 2022. Ggplot2: Create Elegant Data Visualisations Using the Grammar of Graphics. <https://CRAN.R-project.org/package=ggplot2>
 
-Wickham, Hadley, Romain François, Lionel Henry, and Kirill Müller. 2022. Dplyr: A Grammar of Data Manipulation. <https://CRAN.R-project.org/package=dplyr>.
+Wickham, Hadley, Romain François, Lionel Henry, and Kirill Müller. 2022. Dplyr: A Grammar of Data Manipulation. <https://CRAN.R-project.org/package=dplyr>
 
-Zeileis, Achim, and Gabor Grothendieck. 2005. "Zoo: S3 Infrastructure for Regular and Irregular Time Series." Journal of Statistical Software 14 (6): 1--27. <https://doi.org/10.18637/jss.v014.i06>.
+Zeileis, Achim, and Gabor Grothendieck. 2005. "Zoo: S3 Infrastructure for Regular and Irregular Time Series." Journal of Statistical Software 14 (6): 1--27. <https://doi.org/10.18637/jss.v014.i06>
 
-Zeileis, Achim, Gabor Grothendieck, and Jeffrey A. Ryan. 2022. Zoo: S3 Infrastructure for Regular and Irregular Time Series (z's Ordered Observations). <https://zoo.R-Forge.R-project.org/>.
+Zeileis, Achim, Gabor Grothendieck, and Jeffrey A. Ryan. 2022. Zoo: S3 Infrastructure for Regular and Irregular Time Series (z's Ordered Observations). <https://zoo.R-Forge.R-project.org/>
 
-Zeileis, Achim, and Torsten Hothorn. 2002. "Diagnostic Checking in Regression Relationships." R News 2 (3): 7--10. <https://CRAN.R-project.org/doc/Rnews/>.
+Zeileis, Achim, and Torsten Hothorn. 2002. "Diagnostic Checking in Regression Relationships." R News 2 (3): 7--10. <https://CRAN.R-project.org/doc/Rnews/>
 
-Zhu, Hao. 2021. kableExtra: Construct Complex Table with Kable and Pipe Syntax. <https://CRAN.R-project.org/package=kableExtra>.
+Zhu, Hao. 2021. kableExtra: Construct Complex Table with Kable and Pipe Syntax. <https://CRAN.R-project.org/package=kableExtra>

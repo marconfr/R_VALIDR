@@ -90,3 +90,20 @@ check_upload <- function(dfUPLOAD){
 
 
 
+#---------------------------------------------------------------#
+##### These function check the number of CAL and VAL levels #####
+# They should be use to avoid errors in calculation             #
+# (e.g. 1 CAL level ?)                                          #
+#---------------------------------------------------------------#
+
+check_nb_calibration_level <- function(){
+  nb_cal_lvl <<-  length(unique(dfUPLOAD[dfUPLOAD$TYPE == "CAL", ]$LEVEL))
+}
+
+check_nb_validation_level <- function(){
+  nb_val_lvl <<- length(unique(dfUPLOAD[dfUPLOAD$TYPE == "VAL", ]$LEVEL))
+}
+
+
+
+
