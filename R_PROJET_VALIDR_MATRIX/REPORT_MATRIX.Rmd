@@ -1,11 +1,26 @@
 ---
-title: "Matrix effect analysis"
-output: bookdown::html_document2
+output: 
+  bookdown::html_document2:
+    fig_caption: yes
+    theme: spacelab
+    toc: yes
+    toc_depth: 2
 params:
-  dfMATRIX : NULL
+  dfASSAY : NULL
+  alpha : "default"
+  name : "default" 
+  firstname : "default"
+  substance : "default"
+  pharmprep : "default"
+  concunit : "default"
 date: "`r Sys.Date()`"
 ---
 
+---
+title: "Validation report of the method for the determination of `r paste(params$substance)` in `r paste(params$pharmprep)`"
+author: "`r paste(params$name, params$firstname, sep=" ")`"
+date: "`r Sys.Date()`"
+---
 
 <!-- #### TO DO -->
 <!-- # -> Template -->
@@ -22,10 +37,17 @@ require(viridis)
 require(papeR)
 require(ggpmisc)
 
+#dfRMD <- read_excel("data_valid2.xlsx") #for RMD debug
+sAlpha <- params$alpha
+sName <- params$name
+sFirstName <- params$firstname
+sSubstance <- params$substance
+sPharmPrep <- params$pharmprep
+sConcUnit <- params$concunit
 #dfMATRIX <- read_excel("MATRIX_TEMPLATE.XLSX")
-dfMATRIX <- params$dfMATRIX %>% mutate(DUMMY=ifelse(TYPE=="with",1,0))
+dfMATRIX <- params$dfASSAY %>% mutate(DUMMY=ifelse(TYPE=="with",1,0))
 
-source("MATRIX.R", local = knitr::knit_global())
+#source("MATRIX.R", local = knitr::knit_global())
 #dfMATRIX <- read_excel("MATRIX_TEMPLATE.XLSX")
 #dfMATRIX <- dfMATRIX %>% mutate(DUMMY=if_else(TYPE=="with",1,0))
 ```
@@ -44,13 +66,23 @@ In order to ensure that the analyte as assayed in the medicinal product has a si
 
 For this purpose, two sets of standards (i.e. with exactly known quantities) can be made and compared, one in the pharmaceutical matrix, the other in a solvent. If pre-analytical extraction are needed, they should be performed as intended for the analysis of the medicinal products.
 
+All figures are [interactive](https://plotly-r.com/control-modebar.html) and can be filtered, zoomed, downloaded (publication quality [svg format](https://fr.wikipedia.org/wiki/Scalable_Vector_Graphics)) using menu bar on the upper right corner or the legend. Hovering over lines and points on the graph will display available informations.
+
+**Incorrect use of the application or templates can lead to errors.**
+
+**The results are provided "as is" and should be reviewed and interpreted. Neither the designers nor the providers of the application can be held responsible for any errors or adverse consequences resulting from the use of the app or this report.**
+
+
 # Materials and Methods
 
 ## Data
 
-The data used to investigate the matrix effect are those reported in Appendix. 
+Uploaded data were reported at the end within the section \@ref(raw-data).
+
 
 ## Methods
+
+Validation of assay methods is based on the use of calibration and validation standards made by accurately weighing predetermined quantities of analytes as required. The experiments are generally carried out on multiple series (usually carried out on different days) on multiple concentration levels with multiple replicates per level and per series.
 
 Assuming that the signal ($Y$) varies in an increasing and linear way with the concentration level introduced ($x_1$), a linear regression was performed using an additional independent variable ($𝑥_2$) to test for a matrix effect.
 
@@ -80,7 +112,10 @@ $$
   \end{array}
   \right.
 $$
-`r paste(R.Version()$version.string)` software and `r knitr::inline_expr('stats::lm()')` function was used and the significance level was set for $𝛼=0.05$.
+`r paste(R.Version()$version.string)` software and `r knitr::inline_expr('stats::lm()')` function was used. 
+
+-   **The acceptability value used was set to: `r paste(sAlpha,"%")` (user defined).**
+
 
 # Results
 
@@ -91,7 +126,7 @@ The result of the linear regression are depicted (Tab. \@ref(tab:tab2)).
 
 linear_model_matrix <- lm(data = dfMATRIX, formula = SIGNAL ~ CONC_LEVEL * DUMMY)
 
-if (summary(linear_model_matrix)$coefficients[3, 4] < 0.05 | summary(linear_model_matrix)$coefficients[4, 4] < 0.05) {
+if (summary(linear_model_matrix)$coefficients[3, 4] < sAlpha | summary(linear_model_matrix)$coefficients[4, 4] < sAlpha) {
   booleanMATRIX = TRUE
   } else {
   booleanMATRIX = FALSE
@@ -104,7 +139,7 @@ kbl(prettify(summary(linear_model_matrix))[,1:7],
 
 ```
 
-`r if(booleanMATRIX){"Given the results of the linear regression, $𝛽_2$ or $𝛽_3$ are statistically different from 0 and **it is likely that there is a matrix effect**"}else{"Given the results of the linear regression,$𝛽_2$ or $𝛽_3$ are not statistically different from 0 and **it is unlikely that there is a matrix effect.**"}`
+`r if(booleanMATRIX){"Given the results of the linear regression, $𝛽_2$ or $𝛽_3$ are statistically different from 0 and **it is likely that there is a matrix effect**"}else{"Given the results of the linear regression, $𝛽_2$ or $𝛽_3$ are not statistically different from 0 and **it is unlikely that there is a matrix effect.**"}`
 
 `r if(booleanMATRIX){"Two separate regression lines are needed to describe adequately the data"}else{"One regression line can describe adequately the data"}` as depicted on (Fig. \@ref(fig:fig2)) and `r if(!booleanMATRIX){"the validation of the analytical method should be performed with calibration standards perpared without the matrix"}else{"the validation of **the analytical method should be performed with calibration standards perpared within the matrix**"}`.
 
@@ -142,11 +177,12 @@ if (booleanMATRIX) {
 fig2
 ```
 
-# Appendix
+# Raw data
+User provided
 
 The data used to investigate the matrix effect are those reported in the table \@ref(tab:tab1) and shown in the figure \@ref(fig:fig1). These data should be reviewed for input errors or outliers. 
 
-```{r data_load, echo = FALSE, warning=FALSE, tab.cap="Raw data input for calibration standards with and without matrix",  tab.id='tab1', label='tab1'}
+```{r raw_data, echo = FALSE, warning=FALSE, tab.cap="Raw data input for calibration standards with and without matrix",  tab.id='tab1', label='tab1'}
 
 dfMATRIX %>% 
   kable(caption = 'Raw data input for calibration standards with and without matrix.', booktabs = TRUE) %>%
@@ -170,5 +206,53 @@ fig1
 ```
 
 
-==> End of Report <==
+# R Packages used
+
+Aphalo, Pedro J. 2022a. Ggpmisc: Miscellaneous Extensions to Ggplot2. <https://CRAN.R-project.org/package=ggpmisc>
+
+Aphalo, Pedro J. 2022b. Ggpp: Grammar Extensions to Ggplot2. <https://CRAN.R-project.org/package=ggpp>
+
+Dahl, David B., David Scott, Charles Roosen, Arni Magnusson, and Jonathan Swinton. 2019. Xtable: Export Tables to LaTeX or HTML. <http://xtable.r-forge.r-project.org/>
+
+Daróczi, Gergely, and Roman Tsegelskyi. 2022. Pander: An r Pandoc Writer. <https://rapporter.github.io/pander/>
+
+Dowle, Matt, and Arun Srinivasan. 2022. Data.table: Extension of 'Data.frame'. <https://CRAN.R-project.org/package=data.table>
+
+Fox, John, and Sanford Weisberg. 2019. An R Companion to Applied Regression. Third. Thousand Oaks CA: Sage. <https://socialsciences.mcmaster.ca/jfox/Books/Companion/>
+
+Fox, John, Sanford Weisberg, and Brad Price. 2022a. Car: Companion to Applied Regression. <https://CRAN.R-project.org/package=car>
+
+Fox, John, Sanford Weisberg, and Brad Price. 2022b. carData: Companion to Applied Regression Data Sets. <https://CRAN.R-project.org/package=carData>
+
+Garnier, Simon. 2021. Viridis: Colorblind-Friendly Color Maps for r. <https://CRAN.R-project.org/package=viridis>
+
+Garnier, Simon.. 2022. viridisLite: Colorblind-Friendly Color Maps (Lite Version). <https://CRAN.R-project.org/package=viridisLite>
+
+Hofner, Benjamin. 2021. papeR: A Toolbox for Writing Pretty Papers and Reports. <https://CRAN.R-project.org/package=papeR>
+
+Hofner, Benjamin, and with contributions by many others. 2021. papeR: A Toolbox for Writing Pretty Papers and Reports. <https://github.com/hofnerb/papeR>
+
+Hothorn, Torsten, Achim Zeileis, Richard W. Farebrother, and Clint Cummins. 2022. Lmtest: Testing Linear Regression Models. <https://CRAN.R-project.org/package=lmtest>
+
+R Core Team. 2022. R: A Language and Environment for Statistical Computing. Vienna, Austria: R Foundation for Statistical Computing. <https://www.R-project.org/>
+
+Sievert, Carson. 2020. Interactive Web-Based Data Visualization with r, Plotly, and Shiny. Chapman; Hall/CRC. <https://plotly-r.com>
+
+Sievert, Carson, Chris Parmer, Toby Hocking, Scott Chamberlain, Karthik Ram, Marianne Corvellec, and Pedro Despouy. 2022. Plotly: Create Interactive Web Graphics via Plotly.js. <https://CRAN.R-project.org/package=plotly>
+
+Wickham, Hadley. 2016. Ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York. <https://ggplot2.tidyverse.org>
+
+Wickham, Hadley, and Jennifer Bryan. 2022. Readxl: Read Excel Files. <https://CRAN.R-project.org/package=readxl>
+
+Wickham, Hadley, Winston Chang, Lionel Henry, Thomas Lin Pedersen, Kohske Takahashi, Claus Wilke, Kara Woo, Hiroaki Yutani, and Dewey Dunnington. 2022. Ggplot2: Create Elegant Data Visualisations Using the Grammar of Graphics. <https://CRAN.R-project.org/package=ggplot2>
+
+Wickham, Hadley, Romain François, Lionel Henry, and Kirill Müller. 2022. Dplyr: A Grammar of Data Manipulation. <https://CRAN.R-project.org/package=dplyr>
+
+Zeileis, Achim, and Gabor Grothendieck. 2005. "Zoo: S3 Infrastructure for Regular and Irregular Time Series." Journal of Statistical Software 14 (6): 1--27. <https://doi.org/10.18637/jss.v014.i06>
+
+Zeileis, Achim, Gabor Grothendieck, and Jeffrey A. Ryan. 2022. Zoo: S3 Infrastructure for Regular and Irregular Time Series (z's Ordered Observations). <https://zoo.R-Forge.R-project.org/>
+
+Zeileis, Achim, and Torsten Hothorn. 2002. "Diagnostic Checking in Regression Relationships." R News 2 (3): 7--10. <https://CRAN.R-project.org/doc/Rnews/>
+
+Zhu, Hao. 2021. kableExtra: Construct Complex Table with Kable and Pipe Syntax. <https://CRAN.R-project.org/package=kableExtra>
 
