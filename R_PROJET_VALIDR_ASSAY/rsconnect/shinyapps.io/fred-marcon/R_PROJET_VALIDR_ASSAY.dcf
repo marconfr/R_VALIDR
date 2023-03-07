@@ -5,9 +5,9 @@ account: fred-marcon
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 8447910
-bundleId: 6903302
+bundleId: 6926980
 url: https://fred-marcon.shinyapps.io/R_PROJET_VALIDR_ASSAY/
-when: 1677691125.50633
-lastSyncTime: 1677691125.50635
+when: 1678210905.94951
+lastSyncTime: 1678210905.94951
 asMultiple: FALSE
 asStatic: FALSE
