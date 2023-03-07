@@ -18,6 +18,8 @@ To cite ValidR :
 
 > Frédéric Marçon. (2023). marconfr/R_VALIDR: v1.0 (v1.0). Zenodo. <https://doi.org/10.5281/zenodo.7706081>
 
+[![DOI](https://zenodo.org/badge/594364157.svg)](https://zenodo.org/badge/latestdoi/594364157)
+
 Analytical chemistry app written in shiny / R to ease the validation of method of dosing
 
 -\> **ValidR Matrix** : Detection of matrix effects
