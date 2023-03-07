@@ -365,7 +365,7 @@ compute_validation_data <- function() {
       VALID <- setDT(VALID)[CONC_LEVEL == j, TVH_ABS := mean(get(cVAR)) + KTOL * STDEV_FI]
       VALID <- setDT(VALID)[CONC_LEVEL == j, TVL_RELATIVE := BIAS_pc - KTOL * CV_IP]
       VALID <- setDT(VALID)[CONC_LEVEL == j, TVH_RELATIVE := BIAS_pc + KTOL * CV_IP] 
-      VALID <- setDT(VALID)[, pass := ifelse(test = TVL_RELATIVE > -nACC_LIMIT & TVH_RELATIVE < nACC_LIMIT, "PASS", "FAIL")]
+      VALID <- setDT(VALID)[, expected result := ifelse(test = TVL_RELATIVE > -nACC_LIMIT & TVH_RELATIVE < nACC_LIMIT, "expected result", "non-compliant result")]
     } 
     listVALID[[var]] <<- VALID
   }
@@ -390,7 +390,7 @@ find_x <- function(y, x1, y1, x2, y2) {
 
 find_loq <- function(data){
       temp <- data %>% group_by(CONC_LEVEL) %>%
-      select(-SERIE, -pass) %>%
+      select(-SERIE, -expected result) %>%
       summarize_all(~ mean(.x, na.rm = TRUE)) %>%
       select(CONC_LEVEL, TVL_RELATIVE, TVH_RELATIVE)
       dfLOQ <- data.frame(X=numeric(),Y=numeric())
@@ -425,13 +425,13 @@ plot_validation <- function(data, string) {
     geom_hline(yintercept = -nACC_LIMIT, color = "red", linetype = "dashed") +
     geom_hline(yintercept = 0, color = "red", linetype = "dotted") +
     geom_point() +
-    geom_line(data = data %>% select(-SERIE, -pass) %>% 
+    geom_line(data = data %>% select(-SERIE, -expected result) %>% 
                 group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), 
               aes(x = CONC_LEVEL, y = TVL_RELATIVE), color = "blue") +
-    geom_line(data = data %>% select(-SERIE, -pass) %>% 
+    geom_line(data = data %>% select(-SERIE, -expected result) %>% 
                 group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), 
               aes(x = CONC_LEVEL, y = TVH_RELATIVE), color = "blue") +
-    geom_line(data = data %>% select(-SERIE, -pass) %>% 
+    geom_line(data = data %>% select(-SERIE, -expected result) %>% 
                 group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), 
               aes(x = CONC_LEVEL, y = BIAS_pc), color = "black") +
     theme_light() +
@@ -455,7 +455,7 @@ summary_validation_abs <- function(data, string) {
   string2 <- paste(string, "hat", sep = "_")
   t <- data %>%
     group_by(CONC_LEVEL) %>%
-    select(-SERIE, -pass) %>%
+    select(-SERIE, -expected result) %>%
     summarize_all(~ mean(.x, na.rm = TRUE)) %>%
     select(CONC_LEVEL, string2, BIAS, STDEV_REP, VAR_BS, STDEV_FI, TVL_ABS, TVH_ABS) %>%
     kableExtra::kable(col.names = c(
@@ -476,10 +476,10 @@ summary_validation_rel <- function(data, string) {
   string2 <- paste(string, "hat", sep = "_")
   t <- data %>%
     group_by(CONC_LEVEL) %>%
-    select(-SERIE, -pass) %>%
+    select(-SERIE, -expected result) %>%
     summarize_all(~ mean(.x, na.rm = TRUE)) %>%
     select(CONC_LEVEL, string2, BIAS_pc, RECOV_LIN_pc, CV_REP, CV_IP, TVL_RELATIVE, TVH_RELATIVE) %>%
-    mutate(pass = ifelse(TVL_RELATIVE > -nACC_LIMIT & TVH_RELATIVE < nACC_LIMIT, "PASS", "FAIL")) %>%
+    mutate(expected result = ifelse(TVL_RELATIVE > -nACC_LIMIT & TVH_RELATIVE < nACC_LIMIT, "expected result", "non-compliant result")) %>%
     kableExtra::kable(col.names = c(
       paste("Introduced concentrations ", sConcUnit),
       paste("Mean calculated concentrations ", sConcUnit),
@@ -508,8 +508,8 @@ plot_linearity <- function(data, string) {
   p <- ggplot(data, aes(x = CONC_LEVEL, y = data[, 4])) +
     geom_abline(slope = 1, color = "red", linetype = "dashed") +
     geom_point(aes(color = as.factor(SERIE))) +
-    geom_line(data = data %>% select(-SERIE, -pass) %>% group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), aes(x = CONC_LEVEL, y = TVL_ABS), color = "blue") +
-    geom_line(data = data %>% select(-SERIE, -pass) %>% group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), aes(x = CONC_LEVEL, y = TVH_ABS), color = "blue") +
+    geom_line(data = data %>% select(-SERIE, -expected result) %>% group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), aes(x = CONC_LEVEL, y = TVL_ABS), color = "blue") +
+    geom_line(data = data %>% select(-SERIE, -expected result) %>% group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), aes(x = CONC_LEVEL, y = TVH_ABS), color = "blue") +
     geom_smooth(method = "lm", se = FALSE, color = "black", formula = y ~ x, linewidth=0.5) +
     theme_light() +
     ggtitle(paste(string)) +
@@ -761,9 +761,9 @@ ggplotly(plot_linearity(as.data.frame(listVALID[["LIN"]]), names(listVALID["LIN"
 
 ### Linear regression
 
-`r if(summary(linear_model_stat(listVALID[["LIN"]]))$coefficients[1,4]<0.05){ "The p-value for the intercept is < 0.05 which is in favor of a significant value (FAIL)"}else{ "The p-value for the intercept is > 0.05 which is in favor of a non-significant value (PASS)"}`
+`r if(summary(linear_model_stat(listVALID[["LIN"]]))$coefficients[1,4]<0.05){ "The p-value for the intercept is < 0.05 which is in favor of a significant value (non-compliant result)"}else{ "The p-value for the intercept is > 0.05 which is in favor of a non-significant value (expected result)"}`
 
-`r if(summary(linear_model_stat(listVALID[["LIN"]]))$coefficients[2,4]<0.05){ "The p-value for the slope is < 0.05 which is in favor of a significant value (PASS)"}else{ "The p-value for the slope is > 0.05 which is in favor of a non-significant value (FAIL)"}`
+`r if(summary(linear_model_stat(listVALID[["LIN"]]))$coefficients[2,4]<0.05){ "The p-value for the slope is < 0.05 which is in favor of a significant value (expected result)"}else{ "The p-value for the slope is > 0.05 which is in favor of a non-significant value (non-compliant result)"}`
 
 ```{r}
 
@@ -829,9 +829,9 @@ Linearity profile is shown in Figure \@ref(fig:lplin0). You should check that th
 
 ### Linear regression
 
-`r if(summary(linear_model_stat(listVALID[["LIN_0"]]))$coefficients[1,4]<0.05){ "The p-value for the intercept is < 0.05 which is in favor of a significant value (FAIL)"}else{ "The p-value for the intercept is > 0.05 which is in favor of a non-significant value (PASS)"}`
+`r if(summary(linear_model_stat(listVALID[["LIN_0"]]))$coefficients[1,4]<0.05){ "The p-value for the intercept is < 0.05 which is in favor of a significant value (non-compliant result)"}else{ "The p-value for the intercept is > 0.05 which is in favor of a non-significant value (expected result)"}`
 
-`r if(summary(linear_model_stat(listVALID[["LIN_0"]]))$coefficients[2,4]<0.05){ "The p-value for the slope is < 0.05 which is in favor of a significant value (PASS)"}else{ "The p-value for the slope is > 0.05 which is in favor of a non-significant value (FAIL)"}`
+`r if(summary(linear_model_stat(listVALID[["LIN_0"]]))$coefficients[2,4]<0.05){ "The p-value for the slope is < 0.05 which is in favor of a significant value (expected result)"}else{ "The p-value for the slope is > 0.05 which is in favor of a non-significant value (non-compliant result)"}`
 
 ```{r}
 
@@ -897,9 +897,9 @@ Linearity profile is shown in Figure \@ref(fig:lplinmax). You should check that 
 
 ### Linear regression
 
-`r if(summary(linear_model_stat(listVALID[["LIN_0MAX"]]))$coefficients[1,4]<0.05){ "The p-value for the intercept is < 0.05 which is in favor of a significant value (FAIL)"}else{ "The p-value for the intercept is > 0.05 which is in favor of a non-significant value (PASS)"}`
+`r if(summary(linear_model_stat(listVALID[["LIN_0MAX"]]))$coefficients[1,4]<0.05){ "The p-value for the intercept is < 0.05 which is in favor of a significant value (non-compliant result)"}else{ "The p-value for the intercept is > 0.05 which is in favor of a non-significant value (expected result)"}`
 
-`r if(summary(linear_model_stat(listVALID[["LIN_0MAX"]]))$coefficients[2,4]<0.05){ "The p-value for the slope is < 0.05 which is in favor of a significant value (PASS)"}else{ "The p-value for the slope is > 0.05 which is in favor of a non-significant value (FAIL)"}`
+`r if(summary(linear_model_stat(listVALID[["LIN_0MAX"]]))$coefficients[2,4]<0.05){ "The p-value for the slope is < 0.05 which is in favor of a significant value (expected result)"}else{ "The p-value for the slope is > 0.05 which is in favor of a non-significant value (non-compliant result)"}`
 
 ```{r}
 
@@ -965,9 +965,9 @@ ggplotly(plot_linearity(as.data.frame(listVALID[["LIN_1Y"]]), names(listVALID["L
 
 ### Linear regression
 
-`r if(summary(linear_model_stat(listVALID[["LIN_1Y"]]))$coefficients[1,4]<0.05){ "The p-value for the intercept is < 0.05 which is in favor of a significant value (FAIL)"}else{ "The p-value for the intercept is > 0.05 which is in favor of a non-significant value (PASS)"}`
+`r if(summary(linear_model_stat(listVALID[["LIN_1Y"]]))$coefficients[1,4]<0.05){ "The p-value for the intercept is < 0.05 which is in favor of a significant value (non-compliant result)"}else{ "The p-value for the intercept is > 0.05 which is in favor of a non-significant value (expected result)"}`
 
-`r if(summary(linear_model_stat(listVALID[["LIN_1Y"]]))$coefficients[2,4]<0.05){ "The p-value for the slope is < 0.05 which is in favor of a significant value (PASS)"}else{ "The p-value for the slope is > 0.05 which is in favor of a non-significant value (FAIL)"}`
+`r if(summary(linear_model_stat(listVALID[["LIN_1Y"]]))$coefficients[2,4]<0.05){ "The p-value for the slope is < 0.05 which is in favor of a significant value (expected result)"}else{ "The p-value for the slope is > 0.05 which is in favor of a non-significant value (non-compliant result)"}`
 
 ```{r}
 
@@ -1033,9 +1033,9 @@ ggplotly(plot_linearity(as.data.frame(listVALID[["LIN_1X"]]), names(listVALID["L
 
 ### Linear regression
 
-`r if(summary(linear_model_stat(listVALID[["LIN_1X"]]))$coefficients[1,4]<0.05){ "The p-value for the intercept is < 0.05 which is in favor of a significant value (FAIL)"}else{ "The p-value for the intercept is > 0.05 which is in favor of a non-significant value (PASS)"}`
+`r if(summary(linear_model_stat(listVALID[["LIN_1X"]]))$coefficients[1,4]<0.05){ "The p-value for the intercept is < 0.05 which is in favor of a significant value (non-compliant result)"}else{ "The p-value for the intercept is > 0.05 which is in favor of a non-significant value (expected result)"}`
 
-`r if(summary(linear_model_stat(listVALID[["LIN_1X"]]))$coefficients[2,4]<0.05){ "The p-value for the slope is < 0.05 which is in favor of a significant value (PASS)"}else{ "The p-value for the slope is > 0.05 which is in favor of a non-significant value (FAIL)"}`
+`r if(summary(linear_model_stat(listVALID[["LIN_1X"]]))$coefficients[2,4]<0.05){ "The p-value for the slope is < 0.05 which is in favor of a significant value (expected result)"}else{ "The p-value for the slope is > 0.05 which is in favor of a non-significant value (non-compliant result)"}`
 
 ```{r}
 

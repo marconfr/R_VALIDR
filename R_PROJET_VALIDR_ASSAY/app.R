@@ -117,10 +117,7 @@ ui <- fluidPage(
         HTML("<p> Data should be downloaded using a template xlsx file in which
                  you should enter raw results obtained during your analysis</p>
                  <p>Use sliders to indicate the numbers of series, levels, replicates
-                 you have performed. You could use protocols described by <i>Hubert,
-                 P. et al.  2007. Harmonization of strategies for the validation
-                 of quantitative analytical procedures.
-                  A SFSTP proposal - part III. J Pharm Biomed Anal 45: 82-96.</i></p>
+                 you have performed.</p>
                   <p> A run is the analysis of the calibration and validation standards
                  performed on a given day by a single operator.</p><p>Concentration levels correspond to the theorical concentrations
                obtained by weighing and diluting when preparing standards.
@@ -235,8 +232,6 @@ server <- function(input, output) {
   output$textPROTOCOL <- renderUI({
   })
 
-  # CHANGER ICI LE TEMPLATE QUI DOIT MAINTENANT ETRE GENERE
-
   output$Template <- downloadHandler(
     filename = function() {
       "ASSAY_TEMPLATE.XLSX"
@@ -324,8 +319,8 @@ server <- function(input, output) {
         firstname = input$tiFN,
         substance = input$tiAS,
         pharmprep = input$tiPP,
-        concunit = input$tiUUC,
-        signalunit = input$tiUUS
+        concunit = input$tiUUC
+        #signalunit = input$tiUUS
       )
       # Knit the document, passing in the `params` list, and eval it in a
       # child of the global environment (this isolates the code in the document
