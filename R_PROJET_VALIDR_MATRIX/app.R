@@ -112,7 +112,9 @@ ui <- fluidPage(
                As the code is published, all calculations are 
              publicly available for reviewing and you can provide your raw data 
              (e.g. the completed template) as supplementary  material for reviewing purpose. 
-             You just have to cite the application to ease reviewing.
+             You just have to cite the application to ease reviewing.</br>
+             To cite ValidR :
+             <b>Frédéric Marçon. (2023). marconfr/R_VALIDR: v1.0 (v1.0). Zenodo. https://doi.org/10.5281/zenodo.7706081</b>
              </p>"),
           ),
       
