@@ -22,13 +22,6 @@ author: "`r paste(params$name, params$firstname, sep=" ")`"
 date: "`r Sys.Date()`"
 ---
 
-<!-- #### TO DO -->
-<!-- # -> Template -->
-<!-- # -> Vérification du fichier -->
-
-
-
-
 ```{r setup, message=FALSE, echo=FALSE, warning=FALSE}
 require(tidyverse)
 require(kableExtra)
