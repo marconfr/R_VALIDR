@@ -365,7 +365,7 @@ compute_validation_data <- function() {
       VALID <- setDT(VALID)[CONC_LEVEL == j, TVH_ABS := mean(get(cVAR)) + KTOL * STDEV_FI]
       VALID <- setDT(VALID)[CONC_LEVEL == j, TVL_RELATIVE := BIAS_pc - KTOL * CV_IP]
       VALID <- setDT(VALID)[CONC_LEVEL == j, TVH_RELATIVE := BIAS_pc + KTOL * CV_IP] 
-      VALID <- setDT(VALID)[, expected result := ifelse(test = TVL_RELATIVE > -nACC_LIMIT & TVH_RELATIVE < nACC_LIMIT, "expected result", "non-compliant result")]
+      VALID <- setDT(VALID)[, "Comment" := ifelse(test = TVL_RELATIVE > -nACC_LIMIT & TVH_RELATIVE < nACC_LIMIT, "Expected result", "Non-compliant result")]
     } 
     listVALID[[var]] <<- VALID
   }
@@ -390,7 +390,7 @@ find_x <- function(y, x1, y1, x2, y2) {
 
 find_loq <- function(data){
       temp <- data %>% group_by(CONC_LEVEL) %>%
-      select(-SERIE, -expected result) %>%
+      select(-SERIE, -"Comment") %>%
       summarize_all(~ mean(.x, na.rm = TRUE)) %>%
       select(CONC_LEVEL, TVL_RELATIVE, TVH_RELATIVE)
       dfLOQ <- data.frame(X=numeric(),Y=numeric())
@@ -425,13 +425,13 @@ plot_validation <- function(data, string) {
     geom_hline(yintercept = -nACC_LIMIT, color = "red", linetype = "dashed") +
     geom_hline(yintercept = 0, color = "red", linetype = "dotted") +
     geom_point() +
-    geom_line(data = data %>% select(-SERIE, -expected result) %>% 
+    geom_line(data = data %>% select(-SERIE, -Comment) %>% 
                 group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), 
               aes(x = CONC_LEVEL, y = TVL_RELATIVE), color = "blue") +
-    geom_line(data = data %>% select(-SERIE, -expected result) %>% 
+    geom_line(data = data %>% select(-SERIE, -Comment) %>% 
                 group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), 
               aes(x = CONC_LEVEL, y = TVH_RELATIVE), color = "blue") +
-    geom_line(data = data %>% select(-SERIE, -expected result) %>% 
+    geom_line(data = data %>% select(-SERIE, -Comment) %>% 
                 group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), 
               aes(x = CONC_LEVEL, y = BIAS_pc), color = "black") +
     theme_light() +
@@ -455,7 +455,7 @@ summary_validation_abs <- function(data, string) {
   string2 <- paste(string, "hat", sep = "_")
   t <- data %>%
     group_by(CONC_LEVEL) %>%
-    select(-SERIE, -expected result) %>%
+    select(-SERIE, -Comment) %>%
     summarize_all(~ mean(.x, na.rm = TRUE)) %>%
     select(CONC_LEVEL, string2, BIAS, STDEV_REP, VAR_BS, STDEV_FI, TVL_ABS, TVH_ABS) %>%
     kableExtra::kable(col.names = c(
@@ -476,10 +476,10 @@ summary_validation_rel <- function(data, string) {
   string2 <- paste(string, "hat", sep = "_")
   t <- data %>%
     group_by(CONC_LEVEL) %>%
-    select(-SERIE, -expected result) %>%
+    select(-SERIE, -Comment) %>%
     summarize_all(~ mean(.x, na.rm = TRUE)) %>%
     select(CONC_LEVEL, string2, BIAS_pc, RECOV_LIN_pc, CV_REP, CV_IP, TVL_RELATIVE, TVH_RELATIVE) %>%
-    mutate(expected result = ifelse(TVL_RELATIVE > -nACC_LIMIT & TVH_RELATIVE < nACC_LIMIT, "expected result", "non-compliant result")) %>%
+    mutate(Comment = ifelse(TVL_RELATIVE > -nACC_LIMIT & TVH_RELATIVE < nACC_LIMIT, "expected result", "non-compliant result")) %>%
     kableExtra::kable(col.names = c(
       paste("Introduced concentrations ", sConcUnit),
       paste("Mean calculated concentrations ", sConcUnit),
@@ -489,7 +489,7 @@ summary_validation_rel <- function(data, string) {
       "CV intermediate precision (%)",
       "Low limit of tolerance (%)",
       "High limit of tolerance (%)",
-      "Results"
+      "Comment"
     ), caption = paste("Trueness and precision estimators and limits (", string, ")")) %>%
     kable_styling("hover")
   return(t)
@@ -508,8 +508,8 @@ plot_linearity <- function(data, string) {
   p <- ggplot(data, aes(x = CONC_LEVEL, y = data[, 4])) +
     geom_abline(slope = 1, color = "red", linetype = "dashed") +
     geom_point(aes(color = as.factor(SERIE))) +
-    geom_line(data = data %>% select(-SERIE, -expected result) %>% group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), aes(x = CONC_LEVEL, y = TVL_ABS), color = "blue") +
-    geom_line(data = data %>% select(-SERIE, -expected result) %>% group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), aes(x = CONC_LEVEL, y = TVH_ABS), color = "blue") +
+    geom_line(data = data %>% select(-SERIE, -Comment) %>% group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), aes(x = CONC_LEVEL, y = TVL_ABS), color = "blue") +
+    geom_line(data = data %>% select(-SERIE, -Comment) %>% group_by(CONC_LEVEL) %>% summarize_all(~ mean(.x, na.rm = TRUE)), aes(x = CONC_LEVEL, y = TVH_ABS), color = "blue") +
     geom_smooth(method = "lm", se = FALSE, color = "black", formula = y ~ x, linewidth=0.5) +
     theme_light() +
     ggtitle(paste(string)) +

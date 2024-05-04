@@ -87,24 +87,6 @@ ui <- fluidPage(
              HTML("<p>[ValidR – Matrix] is an application whose objective is to test 
                whether the matrix of a drug to be assayed is likely to influence 
                the response of the analyte</p>
-             <p> When a drug is assayed it is possible that the excipients or 
-               extraction solvents (e.g. ointment assay) influence the signal 
-               produced by the analyte compared to the signal produced by simply 
-               dissolving the analyte in a analytic solvent (e.g. methanol).</p>
-             <p> For instance: the signal produced by the analyte is likely to be 
-               influenced by the other products around when analyzed by mass 
-               spectrometry (signal suppression or enhancement) or by UV-visible 
-               spetrometry.</p>
-             <p> In order to ensure that the analyte as assayed in the medicinal 
-               product has a signal equivalent to that produced by a calibration 
-               standard at the same concentrations, it should be ensured that 
-               there are no significant differences between the two signals 
-               produced.</p>
-             <p> For this purpose, two sets of standards (i.e. with exactly known 
-               quantities) can be made and compared, one in the pharmaceutical
-               matrix, the other in a solvent. If pre-analytical extraction are 
-               needed, they should be performed as intended for the analysis of 
-               the medicinal products</p>
              <p> For now, [ValidR – Matrix]  only works for assay methods where 
                there is a linear relationship between the amount of analyte and 
                the signal.</p>
@@ -114,7 +96,8 @@ ui <- fluidPage(
              (e.g. the completed template) as supplementary  material for reviewing purpose. 
              You just have to cite the application to ease reviewing.</br>
              To cite ValidR :
-             <b>Frédéric Marçon. (2023). marconfr/R_VALIDR: v1.0 (v1.0). Zenodo. https://doi.org/10.5281/zenodo.7706081</b>
+             <b>Frédéric Marçon. (2023). marconfr/R_VALIDR: v1.0 (v1.0). Zenodo. https://doi.org/10.5281/zenodo.7706081</b> 
+             <a href='https://zenodo.org/badge/latestdoi/594364157'><img src='https://zenodo.org/badge/594364157.svg' alt='DOI'></a>
              </p>"),
           ),
       
