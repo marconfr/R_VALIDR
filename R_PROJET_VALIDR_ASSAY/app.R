@@ -104,7 +104,7 @@ ui <- fluidPage(
               You just have to cite the application
               </p>
               To cite ValidR : 
-              <b>Frédéric Marçon. (2023). marconfr/R_VALIDR: v1.0 (v1.0). Zenodo. https://doi.org/10.5281/zenodo.7706081</b>
+              <b>Frédéric Marçon. (2023). marconfr/R_VALIDR: v1.0 (v1.0). Zenodo. https://doi.org/10.5281/zenodo.7706081</b> <a href='https://zenodo.org/badge/latestdoi/594364157'><img src='https://zenodo.org/badge/594364157.svg' alt='DOI'></a>
               </br>
               <p> You should check for the presence or absence of a matrix effect with [ValidR - Matrix]
                   before choosing the appropriate validation method 

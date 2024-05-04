@@ -266,7 +266,7 @@ compute_validation_data <- function() {
       VALID <- setDT(VALID)[CONC_LEVEL == j, TVH_ABS := mean(get(cVAR)) + KTOL * STDEV_FI]
       VALID <- setDT(VALID)[CONC_LEVEL == j, TVL_RELATIVE := BIAS_pc - KTOL * CV_IP]
       VALID <- setDT(VALID)[CONC_LEVEL == j, TVH_RELATIVE := BIAS_pc + KTOL * CV_IP] 
-      VALID <- setDT(VALID)[, pass := ifelse(test = TVL_RELATIVE > -nACC_LIMIT & TVH_RELATIVE < nACC_LIMIT, "PASS", "FAIL")]
+      VALID <- setDT(VALID)[, pass := ifelse(test = TVL_RELATIVE > -nACC_LIMIT & TVH_RELATIVE < nACC_LIMIT, "Expected result", "Non-compliant result")]
     } 
     listVALID[[var]] <<- VALID
   }
@@ -371,7 +371,7 @@ summary_validation_rel <- function(data, string) {
     select(-SERIE, -pass) %>%
     summarize_all(~ mean(.x, na.rm = TRUE)) %>%
     select(CONC_LEVEL, string2, BIAS_pc, RECOV_LIN_pc, CV_REP, CV_IP, TVL_RELATIVE, TVH_RELATIVE) %>%
-    mutate(pass = ifelse(TVL_RELATIVE > -nACC_LIMIT & TVH_RELATIVE < nACC_LIMIT, "PASS", "FAIL")) %>%
+    mutate(pass = ifelse(TVL_RELATIVE > -nACC_LIMIT & TVH_RELATIVE < nACC_LIMIT, "Expected result", "Non-compliant result")) %>%
     kableExtra::kable(col.names = c(
       paste("Introduced concentrations ", sConcUnit),
       paste("Mean calculated concentrations ", sConcUnit),
@@ -647,9 +647,9 @@ Linearity profile is shown in Figure \@ref(fig:lplin0). You should check that th
 
 ### Linear regression
 
-`r if(summary(linear_model_stat(listVALID[["LIN_0"]]))$coefficients[1,4]<0.05){ "The p-value for the intercept is < 0.05 which is in favor of a significant value (FAIL)"}else{ "The p-value for the intercept is > 0.05 which is in favor of a non-significant value (PASS)"}`
+`r if(summary(linear_model_stat(listVALID[["LIN_0"]]))$coefficients[1,4]<0.05){ "The p-value for the intercept is < 0.05 which is in favor of a significant value (Non-compliant result)"}else{ "The p-value for the intercept is > 0.05 which is in favor of a non-significant value (Expected result)"}`
 
-`r if(summary(linear_model_stat(listVALID[["LIN_0"]]))$coefficients[2,4]<0.05){ "The p-value for the slope is < 0.05 which is in favor of a significant value (PASS)"}else{ "The p-value for the slope is > 0.05 which is in favor of a non-significant value (FAIL)"}`
+`r if(summary(linear_model_stat(listVALID[["LIN_0"]]))$coefficients[2,4]<0.05){ "The p-value for the slope is < 0.05 which is in favor of a significant value (Expected result)"}else{ "The p-value for the slope is > 0.05 which is in favor of a non-significant value (Non-compliant result)"}`
 
 ```{r}
 
