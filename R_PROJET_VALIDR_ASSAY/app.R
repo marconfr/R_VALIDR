@@ -28,6 +28,8 @@ library(tibble)
 library(janitor)
 library(reactable)
 library(digest)
+library(shinycssloaders)  # Ajouté pour les spinners
+library(shinybusy)        # Ajouté pour les indicateurs de chargement
 
 # =======================#
 ####  LOAD SOURCE.    ####
@@ -40,6 +42,7 @@ source("R/GLOBAL.R", local = TRUE)
 
 
 ui <- fluidPage(
+  use_busy_spinner(spin = "fading-circle"),
   tags$head(
     tags$style(HTML("
                     .shiny-output-error-validation {
@@ -104,11 +107,12 @@ ui <- fluidPage(
               You just have to cite the application
               </p>
               To cite ValidR : 
-              <b>Frédéric Marçon. (2023). marconfr/R_VALIDR: v1.0 (v1.0). Zenodo. https://doi.org/10.5281/zenodo.7706081</b> <a href='https://zenodo.org/badge/latestdoi/594364157'><img src='https://zenodo.org/badge/594364157.svg' alt='DOI'></a>
+              <b>Frédéric Marçon. (2023). marconfr/R_VALIDR: v1.1 (v1.1). Zenodo. https://doi.org/10.5281/zenodo.7706080</b> <a href='https://zenodo.org/badge/latestdoi/594364157'><img src='https://zenodo.org/badge/594364157.svg' alt='DOI'></a>
               </br>
               <p> You should check for the presence or absence of a matrix effect with [ValidR - Matrix]
                   before choosing the appropriate validation method 
               </p>
+              You can report errors to <a href='mailto:frederic.marcon@u-picardie.fr'>frederic.marcon@u-picardie.fr</a>
               <p> <small></small>
               </p>"),
         ),
@@ -197,7 +201,7 @@ ui <- fluidPage(
           label = "Upload data. Choose xlsx file",
           accept = c(".xlsx")
         ),
-        DT::DTOutput(outputId = "table_complete"),
+        DT::DTOutput(outputId = "table_complete") %>% withSpinner(),
         HTML("</br><hr>")
       ),
 
@@ -298,42 +302,46 @@ server <- function(input, output) {
   output$report <- downloadHandler(
     filename = "REPORT_ASSAY.html",
     content = function(file) {
+      show_modal_spinner(spin = "fading-circle", text = "Generating report...")
       # Copy the report file to a temporary directory before processing it, in
       # case we don't have write permissions to the current working dir (which
       # can happen when deployed).
-      
-      if (nCAL_LVL>1){
-        tempReport <- file.path(tempdir(), "REPORT_ASSAY.Rmd")
-        file.copy("REPORT_ASSAY.Rmd", tempReport, overwrite = TRUE)
-      } else {
-        tempReport <- file.path(tempdir(), "REPORT_ASSAY_1CAL.Rmd")
-        file.copy("REPORT_ASSAY_1CAL.Rmd", tempReport, overwrite = TRUE)
-      }
-      
-      # tempScript <- file.path(tempdir(), "R/SCRIPT.R")
-      # file.copy("SCRIPT.R", tempScript, overwrite = TRUE)
-      
-      # Set up parameters to pass to Rmd document dfUPLOADS needs ()
-      params <- list(
-        dfASSAY = dfUPLOAD(),
-        nBeta = input$tiB,
-        nACC_LIMIT = input$tiAL,
-        name = input$tiN,
-        firstname = input$tiFN,
-        substance = input$tiAS,
-        pharmprep = input$tiPP,
-        concunit = input$tiUUC
-        #signalunit = input$tiUUS
-      )
-      # Knit the document, passing in the `params` list, and eval it in a
-      # child of the global environment (this isolates the code in the document
-      # from the code in this app).
-
-      rmarkdown::render(tempReport, #<- else put tempReport directory
-        output_file = file,
-        params = params,
-        envir = new.env(parent = globalenv())
-      )
+      tryCatch({
+        if (nCAL_LVL>1){
+          tempReport <- file.path(tempdir(), "REPORT_ASSAY.Rmd")
+          file.copy("REPORT_ASSAY.Rmd", tempReport, overwrite = TRUE)
+        } else {
+          tempReport <- file.path(tempdir(), "REPORT_ASSAY_1CAL.Rmd")
+          file.copy("REPORT_ASSAY_1CAL.Rmd", tempReport, overwrite = TRUE)
+        }
+        
+        # tempScript <- file.path(tempdir(), "R/SCRIPT.R")
+        # file.copy("SCRIPT.R", tempScript, overwrite = TRUE)
+        
+        # Set up parameters to pass to Rmd document dfUPLOADS needs ()
+        params <- list(
+          dfASSAY = dfUPLOAD(),
+          nBeta = input$tiB,
+          nACC_LIMIT = input$tiAL,
+          name = input$tiN,
+          firstname = input$tiFN,
+          substance = input$tiAS,
+          pharmprep = input$tiPP,
+          concunit = input$tiUUC
+          #signalunit = input$tiUUS
+        )
+        # Knit the document, passing in the `params` list, and eval it in a
+        # child of the global environment (this isolates the code in the document
+        # from the code in this app).
+  
+        rmarkdown::render(tempReport, #<- else put tempReport directory
+          output_file = file,
+          params = params,
+          envir = new.env(parent = globalenv())
+        )},
+      finally ={
+        remove_modal_spinner()
+      })
     }
   )
 }
