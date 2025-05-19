@@ -79,9 +79,12 @@ dfTYPE <- data.frame(
   "SIGNAL" = numeric())
 
 check_upload <- function(dfUPLOAD){
-  if(isFALSE(janitor::compare_df_cols_same(dfTYPE,dfUPLOAD, bind_method = "rbind"))){
+  if (isFALSE(janitor::compare_df_cols_same(dfTYPE, dfUPLOAD, bind_method = "rbind"))) {
     return(FALSE)
-  } else if(anyNA(dfUPLOAD)){
+  } else if (anyNA(dfUPLOAD)) {
+    return(FALSE)
+  } else if (length(unique(dfUPLOAD[dfUPLOAD$TYPE == "VAL", ]$LEVEL)) < 2) {
+    warning("At least two validation levels are required.")
     return(FALSE)
   } else {
     return(TRUE)

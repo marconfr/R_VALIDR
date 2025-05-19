@@ -34,7 +34,7 @@ library(shinybusy)        # Ajouté pour les indicateurs de chargement
 # =======================#
 ####  LOAD SOURCE.    ####
 # =======================#
-source("R/GLOBAL.R", local = TRUE)
+source("R/global.R", local = TRUE)
 
 # ===============#
 ####   UI    ####
@@ -156,7 +156,7 @@ ui <- fluidPage(
                     </br>
                     <hr>
                     <h2> Validation standards</h2>"),
-        sliderInput("nVAL_LEVEL", "Number of concentration levels", value = 3, min = 1, max = 10),
+        sliderInput("nVAL_LEVEL", "Number of concentration levels", value = 3, min = 2, max = 10),
         HTML("<p>Please input the number of concentration levels used</p><p/><ul>
                 <li>For the determination of a single active substance at target concetration level,
                  you could use a 3-point validation range at 80%, 100% and 120% of the target concentration</li>
@@ -252,7 +252,6 @@ server <- function(input, output) {
 
   # The code below verifies the downloaded file and conditionally
   # displays the report generation panel
-
   dfUPLOAD <- reactive({
     if (is.null(input$filedata)) {
       return(NULL)
@@ -261,11 +260,26 @@ server <- function(input, output) {
     req(inFile)
     ext <- tools::file_ext(inFile$datapath)
     validate(need(ext == "XLSX" | ext == "xlsx", "Please upload a *.XLSX or *.xlsx file"))
-
-    # Check the file here with check_upload in SCRIPT R
+    
     dfTEMP <- read_excel(inFile$datapath)
-    nCAL_LVL<<-length(unique(dfTEMP[dfTEMP$TYPE == "CAL", ]$LEVEL))
+    
+    # Calibration level is allowed to be 1
+    nCAL_LVL <<- length(unique(dfTEMP[dfTEMP$TYPE == "CAL", ]$LEVEL))
+    
+    # Validation level must be at least 2
+    nVAL_LVL <- length(unique(dfTEMP[dfTEMP$TYPE == "VAL", ]$LEVEL))
+    if (nVAL_LVL < 2) {
+      showModal(modalDialog(
+        title = "Validation standards error",
+        "At least two distinct concentration levels are required for validation standards to assess method linearity and estimate limits of quantification (LOQ).",
+        easyClose = TRUE,
+        footer = modalButton("Close")
+      ))
+      return(NULL)
+    }
+    
     validate(need(check_upload(dfTEMP), "The file has been checked and it seems that there are some mistakes, please follow instructions"))
+    
     return(dfTEMP)
   })
 

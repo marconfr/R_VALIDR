@@ -1,0 +1,12 @@
+name: R_PROJET_VALIDR_ASSAY
+title: R_PROJET_VALIDR_ASSAY
+username: fred-marcon
+account: fred-marcon
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 8447910
+bundleId: 10307470
+url: https://fred-marcon.shinyapps.io/R_PROJET_VALIDR_ASSAY/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
